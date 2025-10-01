@@ -46,7 +46,8 @@ const startElectron = async () => {
     console.log('⚡ Starting Electron app...');
     const electronProcess = spawn('npm', ['run', 'electron'], {
       stdio: 'inherit',
-      shell: isWindows
+      shell: isWindows,
+      env: { ...process.env, NODE_ENV: 'development' }
     });
     
     // 프로세스 종료 처리
