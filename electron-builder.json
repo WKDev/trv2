@@ -1,0 +1,70 @@
+{
+  "appId": "com.trv2.app",
+  "productName": "TRv2",
+  "directories": {
+    "output": "dist",
+    "buildResources": "build"
+  },
+  "files": [
+    "main.js",
+    "preload.js",
+    "renderer.js",
+    "out/**/*",
+    "node_modules/**/*",
+    "!node_modules/.cache/**/*",
+    "!node_modules/electron/**/*",
+    "!node_modules/electron-builder/**/*"
+  ],
+  "extraResources": [
+    {
+      "from": "app/favicon.ico",
+      "to": "favicon.ico"
+    }
+  ],
+  "mac": {
+    "category": "public.app-category.productivity",
+    "target": [
+      {
+        "target": "dmg",
+        "arch": ["x64", "arm64"]
+      }
+    ],
+    "icon": "app/favicon.ico",
+    "darkModeSupport": true
+  },
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64", "ia32"]
+      }
+    ],
+    "icon": "app/favicon.ico",
+    "requestedExecutionLevel": "asInvoker"
+  },
+  "linux": {
+    "target": [
+      {
+        "target": "AppImage",
+        "arch": ["x64"]
+      }
+    ],
+    "icon": "app/favicon.ico",
+    "category": "Office"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true
+  },
+  "dmg": {
+    "title": "TRv2 Installer",
+    "background": null,
+    "window": {
+      "width": 540,
+      "height": 380
+    }
+  }
+}
+

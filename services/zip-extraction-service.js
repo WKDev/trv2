@@ -1,0 +1,268 @@
+const fs = require('fs').promises;
+const path = require('path');
+const yauzl = require('yauzl');
+const { promisify } = require('util');
+
+// yauzl을 Promise로 래핑
+const openZip = promisify(yauzl.open);
+
+class ZipExtractionService {
+  constructor() {
+    this.requiredFiles = ['data.csv', 'meta.csv', 'step.csv'];
+  }
+
+  /**
+   * ZIP 파일을 임시 디렉토리에 압축 해제
+   * @param {string} zipFilePath ZIP 파일 경로
+   * @param {string} extractPath 압축 해제할 디렉토리 경로
+   * @returns {Promise<Object>} 압축 해제 결과
+   */
+  async extractZipFile(zipFilePath, extractPath) {
+    try {
+      // 압축 해제 디렉토리 생성
+      await fs.mkdir(extractPath, { recursive: true });
+
+      const zipfile = await openZip(zipFilePath, { lazyEntries: true });
+      
+      return new Promise((resolve, reject) => {
+        const extractedFiles = [];
+        let hasError = false;
+
+        zipfile.on('entry', (entry) => {
+          const fileName = entry.fileName;
+          
+          // 디렉토리는 건너뛰기
+          if (fileName.endsWith('/')) {
+            zipfile.readEntry();
+            return;
+          }
+
+          // 파일 압축 해제
+          zipfile.openReadStream(entry, (err, readStream) => {
+            if (err) {
+              hasError = true;
+              zipfile.close();
+              reject(err);
+              return;
+            }
+
+            const outputPath = path.join(extractPath, fileName);
+            
+            // 디렉토리 생성 (필요한 경우)
+            const dirPath = path.dirname(outputPath);
+            fs.mkdir(dirPath, { recursive: true }).then(() => {
+              const writeStream = require('fs').createWriteStream(outputPath);
+              
+              readStream.pipe(writeStream);
+              
+              writeStream.on('close', () => {
+                extractedFiles.push({
+                  name: fileName,
+                  path: outputPath,
+                  size: entry.uncompressedSize
+                });
+                zipfile.readEntry();
+              });
+              
+              writeStream.on('error', (err) => {
+                hasError = true;
+                zipfile.close();
+                reject(err);
+              });
+            }).catch(err => {
+              hasError = true;
+              zipfile.close();
+              reject(err);
+            });
+          });
+        });
+
+        zipfile.on('end', () => {
+          zipfile.close();
+          
+          if (hasError) {
+            resolve({
+              success: false,
+              message: 'ZIP 파일 압축 해제 중 오류가 발생했습니다.',
+              extractedFiles: []
+            });
+            return;
+          }
+
+          resolve({
+            success: true,
+            message: 'ZIP 파일이 성공적으로 압축 해제되었습니다.',
+            extractedFiles,
+            extractPath
+          });
+        });
+
+        zipfile.on('error', (error) => {
+          hasError = true;
+          zipfile.close();
+          reject(error);
+        });
+
+        // 첫 번째 엔트리 읽기 시작
+        zipfile.readEntry();
+      });
+    } catch (error) {
+      console.error('ZIP 파일 압축 해제 중 오류:', error);
+      return {
+        success: false,
+        message: `ZIP 파일 압축 해제 중 오류가 발생했습니다: ${error.message}`,
+        extractedFiles: []
+      };
+    }
+  }
+
+  /**
+   * 압축 해제된 파일들 중 필수 CSV 파일들이 있는지 확인
+   * @param {string} extractPath 압축 해제된 디렉토리 경로
+   * @returns {Promise<Object>} 검증 결과
+   */
+  async validateExtractedFiles(extractPath) {
+    try {
+      const foundFiles = [];
+      const missingFiles = [];
+
+      for (const requiredFile of this.requiredFiles) {
+        const filePath = path.join(extractPath, requiredFile);
+        
+        try {
+          await fs.access(filePath, fs.constants.F_OK);
+          foundFiles.push(requiredFile);
+        } catch (error) {
+          missingFiles.push(requiredFile);
+        }
+      }
+
+      if (missingFiles.length > 0) {
+        return {
+          valid: false,
+          message: `필수 파일이 누락되었습니다: ${missingFiles.join(', ')}`,
+          foundFiles,
+          missingFiles
+        };
+      }
+
+      return {
+        valid: true,
+        message: '모든 필수 파일이 존재합니다.',
+        foundFiles,
+        missingFiles: []
+      };
+    } catch (error) {
+      console.error('압축 해제된 파일 검증 중 오류:', error);
+      return {
+        valid: false,
+        message: `파일 검증 중 오류가 발생했습니다: ${error.message}`,
+        foundFiles: [],
+        missingFiles: this.requiredFiles
+      };
+    }
+  }
+
+  /**
+   * CSV 파일의 기본 구조 검증
+   * @param {string} filePath CSV 파일 경로
+   * @returns {Promise<Object>} 검증 결과
+   */
+  async validateCsvFile(filePath) {
+    try {
+      const stats = await fs.stat(filePath);
+      
+      // 파일 크기 확인 (0바이트가 아닌지)
+      if (stats.size === 0) {
+        return {
+          valid: false,
+          message: 'CSV 파일이 비어있습니다.',
+          size: stats.size
+        };
+      }
+
+      // 파일 읽기 시도
+      const content = await fs.readFile(filePath, 'utf8');
+      
+      // 최소한의 CSV 구조 확인 (쉼표가 있는지)
+      if (!content.includes(',')) {
+        return {
+          valid: false,
+          message: '유효하지 않은 CSV 파일 형식입니다.',
+          size: stats.size
+        };
+      }
+
+      // 줄 수 확인
+      const lines = content.split('\n').filter(line => line.trim().length > 0);
+      
+      return {
+        valid: true,
+        message: 'CSV 파일이 유효합니다.',
+        size: stats.size,
+        lineCount: lines.length
+      };
+    } catch (error) {
+      console.error('CSV 파일 검증 중 오류:', error);
+      return {
+        valid: false,
+        message: `CSV 파일 검증 중 오류가 발생했습니다: ${error.message}`,
+        size: 0
+      };
+    }
+  }
+
+  /**
+   * 모든 필수 CSV 파일들의 구조 검증
+   * @param {string} extractPath 압축 해제된 디렉토리 경로
+   * @returns {Promise<Object>} 검증 결과
+   */
+  async validateAllCsvFiles(extractPath) {
+    try {
+      const validationResults = {};
+      let allValid = true;
+      const errors = [];
+
+      for (const requiredFile of this.requiredFiles) {
+        const filePath = path.join(extractPath, requiredFile);
+        const result = await this.validateCsvFile(filePath);
+        
+        validationResults[requiredFile] = result;
+        
+        if (!result.valid) {
+          allValid = false;
+          errors.push(`${requiredFile}: ${result.message}`);
+        }
+      }
+
+      return {
+        valid: allValid,
+        message: allValid ? '모든 CSV 파일이 유효합니다.' : '일부 CSV 파일에 문제가 있습니다.',
+        results: validationResults,
+        errors
+      };
+    } catch (error) {
+      console.error('CSV 파일들 검증 중 오류:', error);
+      return {
+        valid: false,
+        message: `CSV 파일 검증 중 오류가 발생했습니다: ${error.message}`,
+        results: {},
+        errors: [error.message]
+      };
+    }
+  }
+
+  /**
+   * 압축 해제된 디렉토리 정리
+   * @param {string} extractPath 정리할 디렉토리 경로
+   */
+  async cleanupExtractedFiles(extractPath) {
+    try {
+      await fs.rm(extractPath, { recursive: true, force: true });
+    } catch (error) {
+      console.error('압축 해제된 파일 정리 중 오류:', error);
+    }
+  }
+}
+
+module.exports = ZipExtractionService;
