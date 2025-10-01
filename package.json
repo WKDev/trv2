@@ -2,7 +2,7 @@
   "name": "trv2",
   "version": "0.1.0",
   "private": true,
-  "main": "main.js",
+  "main": "electron/main/index.js",
   "homepage": "./",
   "scripts": {
     "dev": "next dev",
@@ -93,9 +93,7 @@
       "output": "dist"
     },
     "files": [
-      "main.js",
-      "preload.js",
-      "renderer.js",
+      "electron/**/*",
       "out/**/*",
       "node_modules/**/*"
     ],

@@ -27,9 +27,9 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       enableRemoteModule: false,
-      preload: path.join(__dirname, 'preload.js')
+      preload: path.join(__dirname, '..', 'preload', 'index.js')
     },
-    icon: path.join(__dirname, 'app', 'favicon.ico'),
+    icon: path.join(__dirname, '..', '..', 'app', 'favicon.ico'),
     show: false, // 윈도우가 준비될 때까지 숨김
     titleBarStyle: 'default'
   });
@@ -37,7 +37,7 @@ function createWindow() {
   // 개발 환경에서는 localhost:3000, 프로덕션에서는 빌드된 파일 사용
   const startUrl = isDev 
     ? 'http://localhost:3000' 
-    : `file://${path.join(__dirname, 'out', 'index.html')}`;
+    : `file://${path.join(__dirname, '..', '..', 'out', 'index.html')}`;
 
   mainWindow.loadURL(startUrl);
 
@@ -231,7 +231,7 @@ ipcMain.handle('show-notification', async (event, title, body) => {
     const notification = new Notification({
       title,
       body,
-      icon: path.join(__dirname, 'app', 'favicon.ico')
+      icon: path.join(__dirname, '..', '..', 'app', 'favicon.ico')
     });
     
     notification.show();
@@ -257,11 +257,11 @@ ipcMain.handle('show-save-dialog', async (event, options) => {
 });
 
 // 파일 처리 서비스들
-const FileService = require('./services/file-service');
-const ZipValidationService = require('./services/zip-validation-service');
-const ZipExtractionService = require('./services/zip-extraction-service');
-const DataCorrectionService = require('./services/data-correction-service');
-const CsvDataReaderService = require('./services/csv-data-reader-service');
+const FileService = require('../services/file-service');
+const ZipValidationService = require('../services/zip-validation-service');
+const ZipExtractionService = require('../services/zip-extraction-service');
+const DataCorrectionService = require('../services/data-correction-service');
+const CsvDataReaderService = require('../services/csv-data-reader-service');
 
 // 서비스 인스턴스 생성
 const fileService = new FileService();

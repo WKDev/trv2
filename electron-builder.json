@@ -6,9 +6,7 @@
     "buildResources": "build"
   },
   "files": [
-    "main.js",
-    "preload.js",
-    "renderer.js",
+    "electron/**/*",
     "out/**/*",
     "node_modules/**/*",
     "!node_modules/.cache/**/*",
