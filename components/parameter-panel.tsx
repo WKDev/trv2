@@ -1,13 +1,16 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useCallback, useRef, memo } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { AlertTriangle } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { AlertTriangle, Save } from "lucide-react"
 import { useElectronStorage } from "@/hooks/use-electron-storage"
+import { useData } from "@/contexts/data-context"
+import { useToast } from "@/hooks/use-toast"
 
 interface Parameter {
   name: string
@@ -21,7 +24,13 @@ interface ParameterPanelProps {
   parameters: Parameter[]
 }
 
-export function ParameterPanel({ parameters: initialParameters }: ParameterPanelProps) {
+const ParameterPanel = memo(({ parameters: initialParameters }: ParameterPanelProps) => {
+  const { updateCorrectionData, correctionData, processedData } = useData()
+  const { toast } = useToast()
+  
+  // debounce를 위한 ref
+  const debounceRefs = useRef<{ [key: string]: NodeJS.Timeout }>({})
+  
   const parameterStorageHooks = initialParameters.map((param) => ({
     scaler: useElectronStorage({
       key: `preprocess-${param.name}-scaler`,
@@ -51,19 +60,112 @@ export function ParameterPanel({ parameters: initialParameters }: ParameterPanel
   const [zScoreEnabled, setZScoreEnabled] = useState(false)
   const [zScoreValue, setZScoreValue] = useState("3.0")
 
+  // debounce된 context 업데이트 함수
+  const debouncedUpdateCorrectionData = useCallback((section: 'preprocessing' | 'analysis', key: string, field: 'Scaler' | 'offset', value: number) => {
+    const debounceKey = `${section}-${key}-${field}`
+    
+    // 기존 타이머가 있으면 취소
+    if (debounceRefs.current[debounceKey]) {
+      clearTimeout(debounceRefs.current[debounceKey])
+    }
+    
+    // 새로운 타이머 설정 (500ms 후에 context 업데이트)
+    debounceRefs.current[debounceKey] = setTimeout(() => {
+      updateCorrectionData(section, key, field, value)
+      delete debounceRefs.current[debounceKey]
+    }, 500)
+  }, [updateCorrectionData])
+
   const handleChange = (index: number, field: "scaler" | "offset", value: string) => {
     const numValue = Number.parseFloat(value)
     if (!isNaN(numValue)) {
       setParameters((prev) => prev.map((param, i) => (i === index ? { ...param, [field]: numValue } : param)))
       const [, setter] = parameterStorageHooks[index][field]
       setter(numValue)
+      
+      // debounce된 context 업데이트
+      const param = parameters[index]
+      const correctionKey = param.name === "Angle1" ? "Ang1" : 
+                           param.name === "Angle2" ? "Ang2" : 
+                           param.name === "Angle3" ? "Ang3" : param.name
+      
+      debouncedUpdateCorrectionData('preprocessing', correctionKey, field === 'scaler' ? 'Scaler' : 'offset', numValue)
+    }
+  }
+
+  const handleSaveCorrectionData = async () => {
+    if (!processedData || !processedData.filePath) {
+      toast({
+        title: "오류",
+        description: "저장할 파일이 없습니다. 먼저 파일을 열어주세요.",
+        variant: "destructive"
+      })
+      return
+    }
+
+    if (!correctionData) {
+      toast({
+        title: "오류",
+        description: "저장할 보정 데이터가 없습니다.",
+        variant: "destructive"
+      })
+      return
+    }
+
+    // Electron API 사용 가능 여부 확인
+    if (typeof window === 'undefined' || !window.electronAPI) {
+      toast({
+        title: "오류",
+        description: "Electron 환경에서만 파일 저장이 가능합니다.",
+        variant: "destructive"
+      })
+      return
+    }
+
+    if (typeof window.electronAPI.updateCorrectionFile !== 'function') {
+      toast({
+        title: "오류",
+        description: "보정 데이터 저장 기능을 사용할 수 없습니다.",
+        variant: "destructive"
+      })
+      return
+    }
+
+    try {
+      const result = await window.electronAPI.updateCorrectionFile(processedData.filePath, correctionData)
+      
+      if (result && result.success) {
+        toast({
+          title: "저장 완료",
+          description: "보정 데이터가 성공적으로 저장되었습니다.",
+        })
+      } else {
+        throw new Error(result?.message || '보정 데이터 저장에 실패했습니다.')
+      }
+    } catch (error) {
+      console.error('보정 데이터 저장 중 오류:', error)
+      toast({
+        title: "저장 실패",
+        description: error instanceof Error ? error.message : "보정 데이터 저장 중 오류가 발생했습니다.",
+        variant: "destructive"
+      })
     }
   }
 
   return (
     <Card className="bg-card">
       <CardHeader>
-        <CardTitle className="text-foreground">데이터 보정</CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-foreground">데이터 보정</CardTitle>
+          <Button 
+            onClick={handleSaveCorrectionData}
+            size="sm"
+            className="bg-primary hover:bg-primary/90"
+          >
+            <Save className="mr-2 h-4 w-4" />
+            보정 데이터 저장
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className="space-y-4 max-h-[800px] overflow-y-auto">
         <div className="space-y-3 rounded-lg border border-border bg-accent/30 p-4">
@@ -214,4 +316,8 @@ export function ParameterPanel({ parameters: initialParameters }: ParameterPanel
       </CardContent>
     </Card>
   )
-}
+})
+
+ParameterPanel.displayName = "ParameterPanel"
+
+export { ParameterPanel }

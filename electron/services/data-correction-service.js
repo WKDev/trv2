@@ -342,6 +342,229 @@ class DataCorrectionService {
   }
 
   /**
+   * ZIP 파일에서 data_correction.json 파일 읽기
+   * @param {string} zipFilePath ZIP 파일 경로
+   * @returns {Promise<Object>} 읽기 결과
+   */
+  async readDataCorrectionFile(zipFilePath) {
+    try {
+      const zipfile = await openZip(zipFilePath, { lazyEntries: true });
+      
+      return new Promise((resolve, reject) => {
+        let correctionData = null;
+        let hasError = false;
+
+        zipfile.on('entry', (entry) => {
+          const fileName = entry.fileName;
+          
+          if (fileName === 'data_correction.json') {
+            // data_correction.json 파일 읽기
+            zipfile.openReadStream(entry, (err, readStream) => {
+              if (err) {
+                hasError = true;
+                zipfile.close();
+                reject(err);
+                return;
+              }
+
+              let data = '';
+              readStream.on('data', (chunk) => {
+                data += chunk.toString();
+              });
+
+              readStream.on('end', () => {
+                try {
+                  correctionData = JSON.parse(data);
+                  zipfile.close();
+                  resolve({
+                    success: true,
+                    message: 'data_correction.json 파일을 성공적으로 읽었습니다.',
+                    data: correctionData
+                  });
+                } catch (parseError) {
+                  hasError = true;
+                  zipfile.close();
+                  resolve({
+                    success: false,
+                    message: 'data_correction.json 파일 파싱 중 오류가 발생했습니다.',
+                    data: null
+                  });
+                }
+              });
+
+              readStream.on('error', (streamError) => {
+                hasError = true;
+                zipfile.close();
+                reject(streamError);
+              });
+            });
+          } else {
+            // 다음 엔트리 읽기
+            zipfile.readEntry();
+          }
+        });
+
+        zipfile.on('end', () => {
+          if (!hasError && !correctionData) {
+            // data_correction.json 파일이 없는 경우 기본값 반환
+            zipfile.close();
+            resolve({
+              success: true,
+              message: 'data_correction.json 파일이 없어 기본값을 사용합니다.',
+              data: this.getDefaultCorrectionData()
+            });
+          }
+        });
+
+        zipfile.on('error', (error) => {
+          hasError = true;
+          zipfile.close();
+          reject(error);
+        });
+
+        // 첫 번째 엔트리 읽기 시작
+        zipfile.readEntry();
+      });
+    } catch (error) {
+      console.error('data_correction.json 파일 읽기 중 오류:', error);
+      return {
+        success: false,
+        message: `파일 읽기 중 오류가 발생했습니다: ${error.message}`,
+        data: null
+      };
+    }
+  }
+
+  /**
+   * ZIP 파일에 data_correction.json 파일 업데이트
+   * @param {string} zipFilePath ZIP 파일 경로
+   * @param {Object} correctionData 업데이트할 보정 데이터
+   * @returns {Promise<Object>} 처리 결과
+   */
+  async updateZipWithCorrectionData(zipFilePath, correctionData) {
+    try {
+      const tempDir = path.join(require('os').tmpdir(), 'trv2-temp');
+      await fs.mkdir(tempDir, { recursive: true });
+      
+      const tempZipPath = path.join(tempDir, `temp_${Date.now()}.zip`);
+      const zipfile = await openZip(zipFilePath, { lazyEntries: true });
+      
+      return new Promise((resolve, reject) => {
+        const newZip = new yazl.ZipFile();
+        const filesToAdd = [];
+        let hasError = false;
+
+        zipfile.on('entry', (entry) => {
+          const fileName = entry.fileName;
+          
+          if (fileName === 'data_correction.json') {
+            // data_correction.json 파일은 건너뛰고 나중에 새로 추가
+            zipfile.readEntry();
+            return;
+          }
+          
+          // 다른 파일들은 새 ZIP에 추가
+          filesToAdd.push({
+            fileName: fileName,
+            entry: entry
+          });
+          
+          zipfile.readEntry();
+        });
+
+        zipfile.on('end', async () => {
+          try {
+            // 기존 파일들을 새 ZIP에 추가
+            for (const file of filesToAdd) {
+              await this.addFileToZip(newZip, zipfile, file.entry);
+            }
+            
+            // 새로운 data_correction.json 파일 추가
+            const correctionJson = JSON.stringify(correctionData, null, 2);
+            newZip.addBuffer(Buffer.from(correctionJson), 'data_correction.json');
+            
+            // 새 ZIP 파일 완성
+            newZip.end();
+            
+            newZip.outputStream.pipe(fs.createWriteStream(tempZipPath))
+              .on('close', async () => {
+                try {
+                  // 원본 파일을 새 파일로 교체
+                  await fs.copyFile(tempZipPath, zipFilePath);
+                  await fs.unlink(tempZipPath);
+                  
+                  zipfile.close();
+                  resolve({
+                    success: true,
+                    message: 'data_correction.json 파일이 성공적으로 업데이트되었습니다.'
+                  });
+                } catch (error) {
+                  zipfile.close();
+                  reject(error);
+                }
+              })
+              .on('error', (error) => {
+                zipfile.close();
+                reject(error);
+              });
+          } catch (error) {
+            zipfile.close();
+            reject(error);
+          }
+        });
+
+        zipfile.on('error', (error) => {
+          hasError = true;
+          zipfile.close();
+          reject(error);
+        });
+
+        // 첫 번째 엔트리 읽기 시작
+        zipfile.readEntry();
+      });
+    } catch (error) {
+      console.error('data_correction.json 파일 업데이트 중 오류:', error);
+      return {
+        success: false,
+        message: `파일 업데이트 중 오류가 발생했습니다: ${error.message}`
+      };
+    }
+  }
+
+  /**
+   * ZIP 파일에 파일을 추가하는 헬퍼 함수
+   * @param {yazl.ZipFile} zip ZIP 파일 객체
+   * @param {Object} zipfile 원본 ZIP 파일 객체
+   * @param {Object} entry ZIP 엔트리
+   * @returns {Promise<void>}
+   */
+  async addFileToZip(zip, zipfile, entry) {
+    return new Promise((resolve, reject) => {
+      zipfile.openReadStream(entry, (err, readStream) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+
+        const chunks = [];
+        readStream.on('data', (chunk) => {
+          chunks.push(chunk);
+        });
+
+        readStream.on('end', () => {
+          const buffer = Buffer.concat(chunks);
+          zip.addBuffer(buffer, entry.fileName);
+          resolve();
+        });
+
+        readStream.on('error', (error) => {
+          reject(error);
+        });
+      });
+    });
+  }
+
+  /**
    * 기본 보정 데이터 가져오기
    * @returns {Object} 기본 보정 데이터
    */

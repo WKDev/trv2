@@ -262,6 +262,7 @@ const ZipValidationService = require('../services/zip-validation-service');
 const ZipExtractionService = require('../services/zip-extraction-service');
 const DataCorrectionService = require('../services/data-correction-service');
 const CsvDataReaderService = require('../services/csv-data-reader-service');
+const CsvDataWriterService = require('../services/csv-data-writer-service');
 
 // 서비스 인스턴스 생성
 const fileService = new FileService();
@@ -269,6 +270,7 @@ const zipValidationService = new ZipValidationService();
 const zipExtractionService = new ZipExtractionService();
 const dataCorrectionService = new DataCorrectionService();
 const csvDataReaderService = new CsvDataReaderService();
+const csvDataWriterService = new CsvDataWriterService();
 
 // ZIP 파일 선택 및 처리
 ipcMain.handle('select-zip-file', async () => {
@@ -397,6 +399,35 @@ ipcMain.handle('check-and-add-correction-file', async (event, zipFilePath) => {
   }
 });
 
+// data_correction.json 파일 읽기
+ipcMain.handle('read-correction-file', async (event, zipFilePath) => {
+  try {
+    const correctionResult = await dataCorrectionService.readDataCorrectionFile(zipFilePath);
+    return correctionResult;
+  } catch (error) {
+    console.error('보정 파일 읽기 중 오류:', error);
+    return {
+      success: false,
+      message: `보정 파일 읽기 중 오류가 발생했습니다: ${error.message}`,
+      data: null
+    };
+  }
+});
+
+// data_correction.json 파일 업데이트
+ipcMain.handle('update-correction-file', async (event, zipFilePath, correctionData) => {
+  try {
+    const updateResult = await dataCorrectionService.updateZipWithCorrectionData(zipFilePath, correctionData);
+    return updateResult;
+  } catch (error) {
+    console.error('보정 파일 업데이트 중 오류:', error);
+    return {
+      success: false,
+      message: `보정 파일 업데이트 중 오류가 발생했습니다: ${error.message}`
+    };
+  }
+});
+
 // CSV 파일들 읽기
 ipcMain.handle('read-csv-files', async (event, extractPath) => {
   try {
@@ -472,6 +503,19 @@ ipcMain.handle('clear-recent-files', async () => {
     return {
       success: false,
       message: `최근 파일 목록 초기화 중 오류가 발생했습니다: ${error.message}`
+    };
+  }
+});
+
+// CSV 파일들 저장
+ipcMain.handle('save-csv-files', async (event, originalZipPath, csvData) => {
+  try {
+    return await csvDataWriterService.updateExistingZip(originalZipPath, csvData);
+  } catch (error) {
+    console.error('CSV 파일 저장 중 오류:', error);
+    return {
+      success: false,
+      message: `CSV 파일 저장 중 오류가 발생했습니다: ${error.message}`
     };
   }
 });

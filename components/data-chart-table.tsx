@@ -2,13 +2,14 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
-import { RotateCcw, Check } from "lucide-react"
+import { RotateCcw, Check, AlertCircle } from "lucide-react"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts"
+import { useData } from "@/contexts/data-context"
 
 // Sample data with multiple y-axis values
 const sampleData = Array.from({ length: 50 }, (_, i) => ({
@@ -29,9 +30,11 @@ const tableData = [
 
 interface DataChartTableProps {
   title: string
+  dataType?: 'data' | 'step' // 'data' for data.csv, 'step' for step.csv
 }
 
-export function DataChartTable({ title }: DataChartTableProps) {
+export function DataChartTable({ title, dataType = 'data' }: DataChartTableProps) {
+  const { getDataCsv, getStepCsv, hasData } = useData()
   const [data, setData] = useState(tableData)
   const [visibleLines, setVisibleLines] = useState({
     Level1: true,
@@ -41,6 +44,38 @@ export function DataChartTable({ title }: DataChartTableProps) {
   })
   const [editingCell, setEditingCell] = useState<{ id: number; field: string } | null>(null)
   const [editValue, setEditValue] = useState("")
+  const [chartData, setChartData] = useState(sampleData)
+
+  // Context에서 실제 데이터를 가져와서 차트 데이터로 변환
+  useEffect(() => {
+    if (hasData()) {
+      const rawData = dataType === 'data' ? getDataCsv() : getStepCsv()
+      
+      if (rawData && rawData.length > 0) {
+        // 실제 데이터를 차트 형식으로 변환
+        const convertedData = rawData.map((row: any, index: number) => ({
+          x: index,
+          Level1: row.Level1 || 0,
+          Level2: row.Level2 || 0,
+          Level3: row.Level3 || 0,
+          Encoder3: row.Encoder3 || 0,
+        }))
+        
+        setChartData(convertedData)
+        
+        // 테이블 데이터도 실제 데이터로 업데이트
+        const tableDataFromCsv = rawData.slice(0, 10).map((row: any, index: number) => ({
+          id: index + 1,
+          selected: true,
+          index: index + 1,
+          value1: row.Level1 || 0,
+          value2: row.Level2 || 0,
+          value3: row.Level3 || 0,
+        }))
+        setData(tableDataFromCsv)
+      }
+    }
+  }, [hasData, getDataCsv, getStepCsv, dataType])
 
   const handleToggleSelect = (id: number) => {
     setData((prev) => prev.map((row) => (row.id === id ? { ...row, selected: !row.selected } : row)))
@@ -83,6 +118,28 @@ export function DataChartTable({ title }: DataChartTableProps) {
     }
   }
 
+  // 데이터가 없을 때 표시할 메시지
+  if (!hasData()) {
+    return (
+      <div className="space-y-6">
+        <Card className="bg-card border-border shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-foreground">{title}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-center py-12 text-muted-foreground">
+              <div className="text-center">
+                <AlertCircle className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p>데이터를 먼저 로드해주세요</p>
+                <p className="text-sm mt-2">파일 열기 탭에서 ZIP 파일을 선택하세요</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       <Card className="bg-card border-border shadow-sm">
@@ -91,7 +148,7 @@ export function DataChartTable({ title }: DataChartTableProps) {
         </CardHeader>
         <CardContent className="space-y-4">
           <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={sampleData}>
+            <LineChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
               <XAxis dataKey="x" stroke="hsl(var(--muted-foreground))" />
               <YAxis stroke="hsl(var(--muted-foreground))" />

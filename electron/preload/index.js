@@ -49,12 +49,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   validateZipStructure: (filePath) => ipcRenderer.invoke('validate-zip-structure', filePath),
   extractZipFile: (zipFilePath) => ipcRenderer.invoke('extract-zip-file', zipFilePath),
   checkAndAddCorrectionFile: (zipFilePath) => ipcRenderer.invoke('check-and-add-correction-file', zipFilePath),
+  readCorrectionFile: (zipFilePath) => ipcRenderer.invoke('read-correction-file', zipFilePath),
+  updateCorrectionFile: (zipFilePath, correctionData) => ipcRenderer.invoke('update-correction-file', zipFilePath, correctionData),
   readCsvFiles: (extractPath) => ipcRenderer.invoke('read-csv-files', extractPath),
   cleanupTempDirectory: () => ipcRenderer.invoke('cleanup-temp-directory'),
   
   // 최근 파일 관리
   getRecentFiles: () => ipcRenderer.invoke('get-recent-files'),
-  clearRecentFiles: () => ipcRenderer.invoke('clear-recent-files')
+  clearRecentFiles: () => ipcRenderer.invoke('clear-recent-files'),
+  
+  // CSV 파일 저장
+  saveCsvFiles: (originalZipPath, csvData) => ipcRenderer.invoke('save-csv-files', originalZipPath, csvData)
 });
 
 // 개발 환경에서만 콘솔 로그 활성화
@@ -79,8 +84,13 @@ window.addEventListener('DOMContentLoaded', () => {
   // 앱 버전 정보 추가 (개발자 도구에서 확인 가능)
   ipcRenderer.invoke('app-version').then(version => {
     console.log(`TRv2 Electron App v${version}`);
+    console.log('Electron API loaded successfully:', Object.keys(window.electronAPI || {}));
   });
 });
+
+// Electron API 로드 확인을 위한 전역 변수
+window.electronAPILoaded = true;
+console.log('Preload script loaded, Electron API exposed:', Object.keys(window.electronAPI || {}));
 
 // 보안: Node.js API 직접 접근 방지
 delete window.require;
