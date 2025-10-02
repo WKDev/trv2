@@ -355,12 +355,36 @@ ipcMain.handle('extract-zip-file', async (event, zipFilePath) => {
     const backupResult = await zipExtractionService.createDataRawBackup(tempDir);
     console.log('data_raw.csv backup result:', backupResult.message);
 
+    // data_correction.json 파일이 없으면 자동으로 생성하여 ZIP에 추가
+    const correctionCheck = await dataCorrectionService.checkDataCorrectionFile(zipFilePath);
+    let correctionAdded = false;
+    
+    if (!correctionCheck.hasFile) {
+      console.log('data_correction.json 파일이 없어서 자동으로 생성합니다.');
+      const addCorrectionResult = await dataCorrectionService.updateZipWithCorrection(zipFilePath);
+      correctionAdded = addCorrectionResult.success;
+      console.log('data_correction.json 자동 생성 결과:', addCorrectionResult.message);
+    }
+
+    // data_raw.csv가 없으면 data.csv를 복사하여 ZIP에 추가
+    const dataRawCheck = await zipValidationService.readFileFromZip(zipFilePath, 'data_raw.csv');
+    let dataRawAdded = false;
+    
+    if (!dataRawCheck) {
+      console.log('data_raw.csv 파일이 없어서 data.csv를 복사하여 생성합니다.');
+      const addDataRawResult = await zipExtractionService.addDataRawToZip(zipFilePath);
+      dataRawAdded = addDataRawResult.success;
+      console.log('data_raw.csv 자동 생성 결과:', addDataRawResult.message);
+    }
+
     return {
       success: true,
       message: 'ZIP 파일이 성공적으로 압축 해제되었습니다.',
       extractPath: tempDir,
       extractedFiles: extractResult.extractedFiles,
-      backupCreated: backupResult.hasBackup
+      backupCreated: backupResult.hasBackup,
+      correctionAdded,
+      dataRawAdded
     };
   } catch (error) {
     console.error('ZIP 파일 압축 해제 중 오류:', error);
