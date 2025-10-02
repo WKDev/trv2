@@ -340,6 +340,181 @@ class ZipExtractionService {
   }
 
   /**
+   * ZIP 파일에 data_raw.csv 파일 추가 (data.csv를 복사)
+   * @param {string} zipFilePath ZIP 파일 경로
+   * @returns {Promise<Object>} 추가 결과
+   */
+  async addDataRawToZip(zipFilePath) {
+    try {
+      const yazl = require('yazl');
+      const tempDir = require('os').tmpdir();
+      const tempZipPath = path.join(tempDir, `temp_data_raw_${Date.now()}.zip`);
+      
+      // ZIP 파일에서 data.csv 읽기
+      const zipfile = await openZip(zipFilePath, { lazyEntries: true });
+      
+      return new Promise((resolve, reject) => {
+        let dataCsvBuffer = null;
+        let hasError = false;
+
+        zipfile.on('entry', (entry) => {
+          if (entry.fileName === 'data.csv') {
+            // data.csv 파일 읽기
+            zipfile.openReadStream(entry, (err, readStream) => {
+              if (err) {
+                hasError = true;
+                zipfile.close();
+                reject(err);
+                return;
+              }
+
+              const chunks = [];
+              readStream.on('data', (chunk) => {
+                chunks.push(chunk);
+              });
+
+              readStream.on('end', () => {
+                dataCsvBuffer = Buffer.concat(chunks);
+                zipfile.readEntry();
+              });
+
+              readStream.on('error', (err) => {
+                hasError = true;
+                zipfile.close();
+                reject(err);
+              });
+            });
+          } else {
+            zipfile.readEntry();
+          }
+        });
+
+        zipfile.on('end', async () => {
+          zipfile.close();
+          
+          if (hasError) {
+            resolve({
+              success: false,
+              message: 'data.csv 파일을 읽는 중 오류가 발생했습니다.'
+            });
+            return;
+          }
+
+          if (!dataCsvBuffer) {
+            resolve({
+              success: false,
+              message: 'data.csv 파일을 찾을 수 없습니다.'
+            });
+            return;
+          }
+
+          try {
+            // 기존 ZIP 파일의 모든 파일을 새 ZIP에 복사하면서 data_raw.csv 추가
+            const newZip = new yazl.ZipFile();
+            const originalZipfile = await openZip(zipFilePath, { lazyEntries: true });
+            
+            originalZipfile.on('entry', (entry) => {
+              if (entry.fileName === 'data_raw.csv') {
+                // data_raw.csv가 이미 있으면 건너뛰기
+                originalZipfile.readEntry();
+                return;
+              }
+              
+              // 다른 파일들은 새 ZIP에 추가
+              originalZipfile.openReadStream(entry, (err, readStream) => {
+                if (err) {
+                  originalZipfile.readEntry();
+                  return;
+                }
+
+                const chunks = [];
+                readStream.on('data', (chunk) => {
+                  chunks.push(chunk);
+                });
+
+                readStream.on('end', () => {
+                  const buffer = Buffer.concat(chunks);
+                  newZip.addBuffer(buffer, entry.fileName);
+                  originalZipfile.readEntry();
+                });
+
+                readStream.on('error', () => {
+                  originalZipfile.readEntry();
+                });
+              });
+            });
+
+            originalZipfile.on('end', () => {
+              // data_raw.csv 추가
+              newZip.addBuffer(dataCsvBuffer, 'data_raw.csv');
+              
+              // 새 ZIP 파일 완성
+              newZip.end();
+              
+              // 파일 저장
+              const writeStream = require('fs').createWriteStream(tempZipPath);
+              newZip.outputStream.pipe(writeStream);
+              
+              writeStream.on('close', async () => {
+                try {
+                  // 원본 파일을 새 파일로 교체
+                  await fs.copyFile(tempZipPath, zipFilePath);
+                  await fs.unlink(tempZipPath);
+                  
+                  resolve({
+                    success: true,
+                    message: 'data_raw.csv 파일이 성공적으로 추가되었습니다.'
+                  });
+                } catch (error) {
+                  resolve({
+                    success: false,
+                    message: `파일 저장 중 오류가 발생했습니다: ${error.message}`
+                  });
+                }
+              });
+              
+              writeStream.on('error', (err) => {
+                resolve({
+                  success: false,
+                  message: `파일 저장 중 오류가 발생했습니다: ${err.message}`
+                });
+              });
+            });
+
+            originalZipfile.on('error', (error) => {
+              resolve({
+                success: false,
+                message: `ZIP 파일 처리 중 오류가 발생했습니다: ${error.message}`
+              });
+            });
+
+            originalZipfile.readEntry();
+          } catch (error) {
+            resolve({
+              success: false,
+              message: `data_raw.csv 추가 중 오류가 발생했습니다: ${error.message}`
+            });
+          }
+        });
+
+        zipfile.on('error', (error) => {
+          hasError = true;
+          zipfile.close();
+          reject(error);
+        });
+
+        zipfile.readEntry();
+      });
+    } catch (error) {
+      console.error('data_raw.csv 추가 중 오류:', error);
+      return {
+        success: false,
+        message: `data_raw.csv 추가 중 오류가 발생했습니다: ${error.message}`
+      };
+    }
+  }
+
+  /**
    * 압축 해제된 디렉토리 정리
    * @param {string} extractPath 정리할 디렉토리 경로
    */

@@ -367,10 +367,12 @@ ipcMain.handle('extract-zip-file', async (event, zipFilePath) => {
     }
 
     // data_raw.csv가 없으면 data.csv를 복사하여 ZIP에 추가
-    const dataRawCheck = await zipValidationService.readFileFromZip(zipFilePath, 'data_raw.csv');
     let dataRawAdded = false;
     
-    if (!dataRawCheck) {
+    try {
+      await zipValidationService.readFileFromZip(zipFilePath, 'data_raw.csv');
+      console.log('data_raw.csv 파일이 이미 존재합니다.');
+    } catch (error) {
       console.log('data_raw.csv 파일이 없어서 data.csv를 복사하여 생성합니다.');
       const addDataRawResult = await zipExtractionService.addDataRawToZip(zipFilePath);
       dataRawAdded = addDataRawResult.success;
