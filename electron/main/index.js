@@ -351,11 +351,16 @@ ipcMain.handle('extract-zip-file', async (event, zipFilePath) => {
       };
     }
 
+    // data_raw.csv 백업 생성 (data.csv가 있으면)
+    const backupResult = await zipExtractionService.createDataRawBackup(tempDir);
+    console.log('data_raw.csv backup result:', backupResult.message);
+
     return {
       success: true,
       message: 'ZIP 파일이 성공적으로 압축 해제되었습니다.',
       extractPath: tempDir,
-      extractedFiles: extractResult.extractedFiles
+      extractedFiles: extractResult.extractedFiles,
+      backupCreated: backupResult.hasBackup
     };
   } catch (error) {
     console.error('ZIP 파일 압축 해제 중 오류:', error);
@@ -516,6 +521,34 @@ ipcMain.handle('save-csv-files', async (event, originalZipPath, csvData) => {
     return {
       success: false,
       message: `CSV 파일 저장 중 오류가 발생했습니다: ${error.message}`
+    };
+  }
+});
+
+// data_raw.csv에서 data.csv로 복원
+ipcMain.handle('restore-from-data-raw', async (event, extractPath) => {
+  try {
+    return await zipExtractionService.restoreFromDataRaw(extractPath);
+  } catch (error) {
+    console.error('data_raw.csv 복원 중 오류:', error);
+    return {
+      success: false,
+      message: `복원 중 오류가 발생했습니다: ${error.message}`,
+      restored: false
+    };
+  }
+});
+
+// data_raw.csv 백업 생성
+ipcMain.handle('create-data-raw-backup', async (event, extractPath) => {
+  try {
+    return await zipExtractionService.createDataRawBackup(extractPath);
+  } catch (error) {
+    console.error('data_raw.csv 백업 생성 중 오류:', error);
+    return {
+      success: false,
+      message: `백업 생성 중 오류가 발생했습니다: ${error.message}`,
+      hasBackup: false
     };
   }
 });

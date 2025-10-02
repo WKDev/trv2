@@ -253,6 +253,93 @@ class ZipExtractionService {
   }
 
   /**
+   * data.csv를 data_raw.csv로 백업
+   * @param {string} extractPath 압축 해제된 디렉토리 경로
+   * @returns {Promise<Object>} 백업 결과
+   */
+  async createDataRawBackup(extractPath) {
+    try {
+      const dataCsvPath = path.join(extractPath, 'data.csv');
+      const dataRawCsvPath = path.join(extractPath, 'data_raw.csv');
+      
+      // data.csv 파일이 존재하는지 확인
+      try {
+        await fs.access(dataCsvPath, fs.constants.F_OK);
+      } catch (error) {
+        return {
+          success: false,
+          message: 'data.csv 파일을 찾을 수 없습니다.',
+          hasBackup: false
+        };
+      }
+      
+      // data_raw.csv가 이미 존재하는지 확인
+      try {
+        await fs.access(dataRawCsvPath, fs.constants.F_OK);
+        return {
+          success: true,
+          message: 'data_raw.csv 백업 파일이 이미 존재합니다.',
+          hasBackup: true
+        };
+      } catch (error) {
+        // data_raw.csv가 없으면 data.csv를 복사하여 생성
+        await fs.copyFile(dataCsvPath, dataRawCsvPath);
+        return {
+          success: true,
+          message: 'data_raw.csv 백업 파일이 생성되었습니다.',
+          hasBackup: true
+        };
+      }
+    } catch (error) {
+      console.error('data_raw.csv 백업 생성 중 오류:', error);
+      return {
+        success: false,
+        message: `백업 생성 중 오류가 발생했습니다: ${error.message}`,
+        hasBackup: false
+      };
+    }
+  }
+
+  /**
+   * data_raw.csv를 data.csv로 복원
+   * @param {string} extractPath 압축 해제된 디렉토리 경로
+   * @returns {Promise<Object>} 복원 결과
+   */
+  async restoreFromDataRaw(extractPath) {
+    try {
+      const dataCsvPath = path.join(extractPath, 'data.csv');
+      const dataRawCsvPath = path.join(extractPath, 'data_raw.csv');
+      
+      // data_raw.csv 파일이 존재하는지 확인
+      try {
+        await fs.access(dataRawCsvPath, fs.constants.F_OK);
+      } catch (error) {
+        return {
+          success: false,
+          message: 'data_raw.csv 백업 파일을 찾을 수 없습니다.',
+          restored: false
+        };
+      }
+      
+      // data_raw.csv를 data.csv로 복사
+      await fs.copyFile(dataRawCsvPath, dataCsvPath);
+      
+      return {
+        success: true,
+        message: 'data_raw.csv에서 data.csv로 복원되었습니다.',
+        restored: true
+      };
+    } catch (error) {
+      console.error('data_raw.csv에서 복원 중 오류:', error);
+      return {
+        success: false,
+        message: `복원 중 오류가 발생했습니다: ${error.message}`,
+        restored: false
+      };
+    }
+  }
+
+  /**
    * 압축 해제된 디렉토리 정리
    * @param {string} extractPath 정리할 디렉토리 경로
    */

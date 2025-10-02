@@ -8,9 +8,9 @@ import { Suspense } from "react"
 import "./globals.css"
 
 export const metadata: Metadata = {
-  title: "철도 데이터 분석 시스템",
-  description: "Railway Data Analysis System",
-  generator: "v0.app",
+  title: "TRv2",
+  description: "Track Record Analysis & Report Generator v2",
+  generator: "wkl",
 }
 
 export default function RootLayout({

@@ -59,7 +59,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   clearRecentFiles: () => ipcRenderer.invoke('clear-recent-files'),
   
   // CSV 파일 저장
-  saveCsvFiles: (originalZipPath, csvData) => ipcRenderer.invoke('save-csv-files', originalZipPath, csvData)
+  saveCsvFiles: (originalZipPath, csvData) => ipcRenderer.invoke('save-csv-files', originalZipPath, csvData),
+  
+  // data_raw.csv 관련 API
+  restoreFromDataRaw: (extractPath) => ipcRenderer.invoke('restore-from-data-raw', extractPath),
+  createDataRawBackup: (extractPath) => ipcRenderer.invoke('create-data-raw-backup', extractPath)
 });
 
 // 개발 환경에서만 콘솔 로그 활성화

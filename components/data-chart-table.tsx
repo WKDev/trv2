@@ -2,124 +2,128 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo, memo } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
-import { RotateCcw, Check, AlertCircle } from "lucide-react"
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts"
+import { RotateCcw, Check, AlertCircle, Loader2 } from "lucide-react"
 import { useData } from "@/contexts/data-context"
+import { VirtualizedTable } from "@/components/virtualized-table"
+import { formatValueByColumn, formatColumnHeader } from "@/lib/unit-formatters"
+import { ChartJSLineChart, SensorType } from "@/components/chart-js-line-chart"
 
-// Sample data with multiple y-axis values
-const sampleData = Array.from({ length: 50 }, (_, i) => ({
-  x: i,
-  Level1: Math.sin(i / 5) * 10 + 50 + Math.random() * 5,
-  Level2: Math.cos(i / 5) * 8 + 45 + Math.random() * 3,
-  Level3: Math.sin(i / 4) * 12 + 48 + Math.random() * 4,
-  Encoder3: Math.cos(i / 6) * 9 + 52 + Math.random() * 3,
-}))
-
-const tableData = [
-  { id: 1, selected: true, index: 1, value1: 45.2, value2: 48.1, value3: 50.3 },
-  { id: 2, selected: true, index: 2, value1: 46.1, value2: 47.8, value3: 51.2 },
-  { id: 3, selected: true, index: 3, value1: 47.3, value2: 49.2, value3: 49.8 },
-  { id: 4, selected: true, index: 4, value1: 48.5, value2: 50.1, value3: 52.1 },
-  { id: 5, selected: true, index: 5, value1: 49.2, value2: 48.9, value3: 50.7 },
-]
+// 제외할 컬럼들
+const EXCLUDED_COLUMNS = ['UnixTimestamp', 'Elasped', 'Timestamp', 'Velocity', 'Encoder1', 'Encoder2']
 
 interface DataChartTableProps {
   title: string
   dataType?: 'data' | 'step' // 'data' for data.csv, 'step' for step.csv
+  data?: any[] // 외부에서 데이터를 전달받을 수 있음
+  showCheckboxes?: boolean // 체크박스 표시 여부
+  onRowSelection?: (rowIndex: number, checked: boolean) => void // 행 선택 핸들러
+  onSelectAll?: (checked: boolean) => void // 전체 선택 핸들러
+  selectedRows?: Set<number> // 선택된 행들
+  onDataUpdate?: (rowIndex: number, field: string, value: number) => void // 데이터 업데이트 핸들러
 }
 
-export function DataChartTable({ title, dataType = 'data' }: DataChartTableProps) {
-  const { getDataCsv, getStepCsv, hasData } = useData()
-  const [data, setData] = useState(tableData)
-  const [visibleLines, setVisibleLines] = useState({
-    Level1: true,
-    Level2: true,
-    Level3: true,
-    Encoder3: true,
-  })
-  const [editingCell, setEditingCell] = useState<{ id: number; field: string } | null>(null)
-  const [editValue, setEditValue] = useState("")
-  const [chartData, setChartData] = useState(sampleData)
+export const DataChartTable = memo(({ 
+  title, 
+  dataType = 'data', 
+  data: externalData, 
+  showCheckboxes = false,
+  onRowSelection,
+  onSelectAll,
+  selectedRows = new Set(),
+  onDataUpdate
+}: DataChartTableProps) => {
+  const { getDataCsv, getStepCsv, hasData, setRawData } = useData()
+  const [isChartLoading, setIsChartLoading] = useState(true)
 
-  // Context에서 실제 데이터를 가져와서 차트 데이터로 변환
-  useEffect(() => {
-    if (hasData()) {
-      const rawData = dataType === 'data' ? getDataCsv() : getStepCsv()
-      
-      if (rawData && rawData.length > 0) {
-        // 실제 데이터를 차트 형식으로 변환
-        const convertedData = rawData.map((row: any, index: number) => ({
-          x: index,
-          Level1: row.Level1 || 0,
-          Level2: row.Level2 || 0,
-          Level3: row.Level3 || 0,
-          Encoder3: row.Encoder3 || 0,
-        }))
-        
-        setChartData(convertedData)
-        
-        // 테이블 데이터도 실제 데이터로 업데이트
-        const tableDataFromCsv = rawData.slice(0, 10).map((row: any, index: number) => ({
-          id: index + 1,
-          selected: true,
-          index: index + 1,
-          value1: row.Level1 || 0,
-          value2: row.Level2 || 0,
-          value3: row.Level3 || 0,
-        }))
-        setData(tableDataFromCsv)
+  // 실제 데이터에서 컬럼 정보 추출
+  const { columns, data, rawData } = useMemo(() => {
+    if (!hasData() && !externalData) {
+      return {
+        columns: [],
+        data: [],
+        rawData: []
       }
     }
-  }, [hasData, getDataCsv, getStepCsv, dataType])
 
-  const handleToggleSelect = (id: number) => {
-    setData((prev) => prev.map((row) => (row.id === id ? { ...row, selected: !row.selected } : row)))
-  }
+    const rawData = externalData || (dataType === 'data' ? getDataCsv() : getStepCsv())
+    
+    if (!rawData || rawData.length === 0) {
+      return {
+        columns: [],
+        data: [],
+        rawData: []
+      }
+    }
+
+    // 지정된 순서로 컬럼 정보 추출
+    const orderedColumns = ['Index', 'Travelled', 'Level1', 'Level2', 'Level3', 'Level4', 'Encoder3', 'Ang1', 'Ang2', 'Ang3']
+    const filteredColumns = orderedColumns.filter(col => 
+      rawData[0] && rawData[0].hasOwnProperty(col)
+    )
+
+    // 테이블용 데이터 생성 (모든 데이터를 가상화로 처리)
+    const tableData = rawData.map((row: any, index: number) => ({
+      id: index + 1,
+      selected: selectedRows.has(index),
+      index: index + 1,
+      ...filteredColumns.reduce((acc, col) => {
+        if (col === 'Index') {
+          acc[col] = parseInt(row[col]) || 0
+        } else {
+          acc[col] = parseFloat(row[col]) || 0
+        }
+        return acc
+      }, {} as Record<string, number>)
+    })) as Array<{ id: number; selected: boolean; index: number } & Record<string, number>>
+
+    return {
+      columns: filteredColumns,
+      data: tableData,
+      rawData
+    }
+  }, [hasData, getDataCsv, getStepCsv, dataType, selectedRows, externalData])
+
 
   const handleReset = () => {
-    setData(tableData)
+    // 리셋 로직은 나중에 구현
+    console.log('Reset data')
   }
 
-  const handleToggleLine = (line: keyof typeof visibleLines) => {
-    setVisibleLines((prev) => ({ ...prev, [line]: !prev[line] }))
-  }
-
-  const handleCellClick = (id: number, field: string, currentValue: number) => {
-    setEditingCell({ id, field })
-    setEditValue(currentValue.toString())
-  }
-
-  const handleCellChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setEditValue(e.target.value)
-  }
-
-  const handleCellBlur = () => {
-    if (editingCell) {
-      const newValue = Number.parseFloat(editValue)
-      if (!isNaN(newValue)) {
-        setData((prev) =>
-          prev.map((row) => (row.id === editingCell.id ? { ...row, [editingCell.field]: newValue } : row)),
-        )
-      }
-      setEditingCell(null)
+  const handleDataUpdate = (rowIndex: number, field: string, value: number) => {
+    if (onDataUpdate) {
+      onDataUpdate(rowIndex, field, value)
+    } else if (externalData && setRawData) {
+      // 외부 데이터가 있고 setRawData가 있으면 직접 업데이트
+      setRawData((prevData: any[]) => {
+        const newData = [...prevData]
+        if (newData[rowIndex]) {
+          newData[rowIndex] = { ...newData[rowIndex], [field]: value }
+        }
+        return newData
+      })
     }
   }
 
-  const handleCellKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      handleCellBlur()
-    } else if (e.key === "Escape") {
-      setEditingCell(null)
+  // 데이터가 변경될 때 차트 로딩 상태 초기화
+  useEffect(() => {
+    if (rawData && rawData.length > 0) {
+      setIsChartLoading(true)
+      // 차트 렌더링을 다음 프레임으로 지연시켜 UI 블로킹 방지
+      const timeoutId = setTimeout(() => {
+        setIsChartLoading(false)
+      }, 100)
+      
+      return () => clearTimeout(timeoutId)
     }
-  }
+  }, [rawData])
 
   // 데이터가 없을 때 표시할 메시지
-  if (!hasData()) {
+  if (!hasData() && !externalData) {
     return (
       <div className="space-y-6">
         <Card className="bg-card border-border shadow-sm">
@@ -146,80 +150,23 @@ export function DataChartTable({ title, dataType = 'data' }: DataChartTableProps
         <CardHeader>
           <CardTitle className="text-foreground">차트</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-              <XAxis dataKey="x" stroke="hsl(var(--muted-foreground))" />
-              <YAxis stroke="hsl(var(--muted-foreground))" />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: "hsl(var(--popover))",
-                  border: "1px solid hsl(var(--border))",
-                  borderRadius: "var(--radius)",
-                }}
+        <CardContent>
+          <div className="h-[300px] w-full relative">
+            {isChartLoading ? (
+              <div className="flex items-center justify-center h-full">
+                <div className="flex flex-col items-center space-y-2">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                  <p className="text-sm text-muted-foreground">차트를 생성하는 중...</p>
+                </div>
+              </div>
+            ) : (
+              <ChartJSLineChart
+                title=""
+                data={rawData}
+                selectedRows={selectedRows}
+                maxDataPoints={1000}
               />
-              <Legend />
-              {visibleLines.Level1 && (
-                <Line type="monotone" dataKey="Level1" stroke="hsl(var(--chart-1))" strokeWidth={2} dot={false} />
-              )}
-              {visibleLines.Level2 && (
-                <Line type="monotone" dataKey="Level2" stroke="hsl(var(--chart-2))" strokeWidth={2} dot={false} />
-              )}
-              {visibleLines.Level3 && (
-                <Line type="monotone" dataKey="Level3" stroke="hsl(var(--chart-3))" strokeWidth={2} dot={false} />
-              )}
-              {visibleLines.Encoder3 && (
-                <Line type="monotone" dataKey="Encoder3" stroke="hsl(var(--chart-4))" strokeWidth={2} dot={false} />
-              )}
-            </LineChart>
-          </ResponsiveContainer>
-
-          <div className="flex flex-wrap gap-4 p-4 bg-accent/30 rounded-lg border border-border">
-            <div className="flex items-center gap-2">
-              <Checkbox id="level1" checked={visibleLines.Level1} onCheckedChange={() => handleToggleLine("Level1")} />
-              <Label htmlFor="level1" className="text-sm font-medium cursor-pointer">
-                <span
-                  className="inline-block w-3 h-3 rounded-full mr-1"
-                  style={{ backgroundColor: "hsl(var(--chart-1))" }}
-                />
-                Level1
-              </Label>
-            </div>
-            <div className="flex items-center gap-2">
-              <Checkbox id="level2" checked={visibleLines.Level2} onCheckedChange={() => handleToggleLine("Level2")} />
-              <Label htmlFor="level2" className="text-sm font-medium cursor-pointer">
-                <span
-                  className="inline-block w-3 h-3 rounded-full mr-1"
-                  style={{ backgroundColor: "hsl(var(--chart-2))" }}
-                />
-                Level2
-              </Label>
-            </div>
-            <div className="flex items-center gap-2">
-              <Checkbox id="level3" checked={visibleLines.Level3} onCheckedChange={() => handleToggleLine("Level3")} />
-              <Label htmlFor="level3" className="text-sm font-medium cursor-pointer">
-                <span
-                  className="inline-block w-3 h-3 rounded-full mr-1"
-                  style={{ backgroundColor: "hsl(var(--chart-3))" }}
-                />
-                Level3
-              </Label>
-            </div>
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="encoder3"
-                checked={visibleLines.Encoder3}
-                onCheckedChange={() => handleToggleLine("Encoder3")}
-              />
-              <Label htmlFor="encoder3" className="text-sm font-medium cursor-pointer">
-                <span
-                  className="inline-block w-3 h-3 rounded-full mr-1"
-                  style={{ backgroundColor: "hsl(var(--chart-4))" }}
-                />
-                Encoder3
-              </Label>
-            </div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -241,88 +188,21 @@ export function DataChartTable({ title, dataType = 'data' }: DataChartTableProps
           </div>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-border">
-                  <th className="p-2 text-left text-sm font-medium text-muted-foreground">선택</th>
-                  <th className="p-2 text-left text-sm font-medium text-muted-foreground">Index</th>
-                  <th className="p-2 text-left text-sm font-medium text-muted-foreground">Value 1</th>
-                  <th className="p-2 text-left text-sm font-medium text-muted-foreground">Value 2</th>
-                  <th className="p-2 text-left text-sm font-medium text-muted-foreground">Value 3</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.map((row) => (
-                  <tr key={row.id} className="border-b border-border hover:bg-accent/50">
-                    <td className="p-2">
-                      <Checkbox checked={row.selected} onCheckedChange={() => handleToggleSelect(row.id)} />
-                    </td>
-                    <td className="p-2 text-sm text-foreground">{row.index}</td>
-                    <td
-                      className="p-2 text-sm text-foreground cursor-pointer hover:bg-accent"
-                      onClick={() => handleCellClick(row.id, "value1", row.value1)}
-                    >
-                      {editingCell?.id === row.id && editingCell?.field === "value1" ? (
-                        <input
-                          type="number"
-                          step="0.1"
-                          value={editValue}
-                          onChange={handleCellChange}
-                          onBlur={handleCellBlur}
-                          onKeyDown={handleCellKeyDown}
-                          autoFocus
-                          className="w-full bg-background border border-primary rounded px-1 py-0.5"
-                        />
-                      ) : (
-                        row.value1
-                      )}
-                    </td>
-                    <td
-                      className="p-2 text-sm text-foreground cursor-pointer hover:bg-accent"
-                      onClick={() => handleCellClick(row.id, "value2", row.value2)}
-                    >
-                      {editingCell?.id === row.id && editingCell?.field === "value2" ? (
-                        <input
-                          type="number"
-                          step="0.1"
-                          value={editValue}
-                          onChange={handleCellChange}
-                          onBlur={handleCellBlur}
-                          onKeyDown={handleCellKeyDown}
-                          autoFocus
-                          className="w-full bg-background border border-primary rounded px-1 py-0.5"
-                        />
-                      ) : (
-                        row.value2
-                      )}
-                    </td>
-                    <td
-                      className="p-2 text-sm text-foreground cursor-pointer hover:bg-accent"
-                      onClick={() => handleCellClick(row.id, "value3", row.value3)}
-                    >
-                      {editingCell?.id === row.id && editingCell?.field === "value3" ? (
-                        <input
-                          type="number"
-                          step="0.1"
-                          value={editValue}
-                          onChange={handleCellChange}
-                          onBlur={handleCellBlur}
-                          onKeyDown={handleCellKeyDown}
-                          autoFocus
-                          className="w-full bg-background border border-primary rounded px-1 py-0.5"
-                        />
-                      ) : (
-                        row.value3
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <VirtualizedTable
+            data={data}
+            columns={columns}
+            showCheckboxes={showCheckboxes}
+            onRowSelection={onRowSelection}
+            onSelectAll={onSelectAll}
+            selectedRows={selectedRows}
+            onDataUpdate={handleDataUpdate}
+            rowHeight={40}
+            visibleRows={20}
+          />
         </CardContent>
       </Card>
     </div>
   )
-}
+})
+
+DataChartTable.displayName = "DataChartTable"

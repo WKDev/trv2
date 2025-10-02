@@ -9,7 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { RotateCcw, Check, AlertCircle } from "lucide-react"
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
+import { ChartJSLineChart } from "@/components/chart-js-line-chart"
 import { useLocalStorage } from "@/hooks/use-local-storage"
 import { useElectronStorage } from "@/hooks/use-electron-storage"
 import { useData } from "@/contexts/data-context"
@@ -308,29 +308,11 @@ export function AnalysisModule({
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_400px]">
       <div className="space-y-6">
-        <Card className="bg-card border-border shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-foreground">차트</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis dataKey="x" stroke="hsl(var(--muted-foreground))" />
-                <YAxis stroke="hsl(var(--muted-foreground))" domain={[chartYMin, chartYMax]} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "hsl(var(--popover))",
-                    border: "1px solid hsl(var(--border))",
-                    borderRadius: "var(--radius)",
-                  }}
-                />
-                <Line type="monotone" dataKey="y" stroke="hsl(var(--chart-1))" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="y2" stroke="hsl(var(--chart-2))" strokeWidth={2} dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
+        <ChartJSLineChart
+          title="차트"
+          data={chartData}
+          maxDataPoints={1000}
+        />
 
         <Card className="bg-card border-border shadow-sm">
           <CardHeader>
@@ -343,7 +325,7 @@ export function AnalysisModule({
                 </Button>
                 <Button size="sm" className="bg-primary hover:bg-primary/90">
                   <Check className="mr-2 h-4 w-4" />
-                  변경 적용
+                  수정사항 적용
                 </Button>
               </div>
             </div>

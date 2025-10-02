@@ -6,7 +6,7 @@ import { useData } from "@/contexts/data-context"
 import { useMemo, memo } from "react"
 
 const DataEditTab = memo(() => {
-  const { correctionData } = useData()
+  const { correctionData, getDataCsv, hasData } = useData()
 
   const parameters = useMemo(() => {
     const defaultParams = [
@@ -43,6 +43,21 @@ const DataEditTab = memo(() => {
       return param
     })
   }, [correctionData])
+
+  // 데이터가 없을 때는 로딩 상태 표시
+  if (!hasData()) {
+    return (
+      <div className="grid gap-6 lg:grid-cols-[1fr_400px]">
+        <div className="flex items-center justify-center py-12 text-muted-foreground">
+          <div className="text-center">
+            <p>데이터를 먼저 로드해주세요</p>
+            <p className="text-sm mt-2">파일 열기 탭에서 ZIP 파일을 선택하세요</p>
+          </div>
+        </div>
+        <div></div>
+      </div>
+    )
+  }
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_400px]">

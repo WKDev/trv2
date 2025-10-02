@@ -58,6 +58,10 @@ declare global {
       
       // CSV 파일 저장
       saveCsvFiles: (originalZipPath: string, csvData: {meta?: any[], data?: any[], step?: any[]}) => Promise<{success: boolean, message: string, savedFiles?: string[], backupPath?: string}>
+      
+      // data_raw.csv 관련 API
+      restoreFromDataRaw: (extractPath: string) => Promise<{success: boolean, message: string, restored: boolean}>
+      createDataRawBackup: (extractPath: string) => Promise<{success: boolean, message: string, hasBackup: boolean}>
     }
   }
 }
