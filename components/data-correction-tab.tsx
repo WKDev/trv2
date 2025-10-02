@@ -211,6 +211,75 @@ const DataCorrectionTab = memo(() => {
       </div>
       
       <div className="space-y-4">
+                {/* 차트 표시 데이터 선택 패널 */}
+                <div className="bg-muted/50 p-4 rounded-lg">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="font-medium">차트 표시 데이터 선택</h4>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsCorrectionPanelCollapsed(!isCorrectionPanelCollapsed)}
+              className="h-6 w-6 p-0"
+            >
+              {isCorrectionPanelCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+            </Button>
+          </div>
+          {!isCorrectionPanelCollapsed && (
+            <Tabs value={selectedSensorType} onValueChange={handleTabChange} className="w-full">
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="Level">Level</TabsTrigger>
+                <TabsTrigger value="Encoder">Encoder</TabsTrigger>
+                <TabsTrigger value="Angle">Angle</TabsTrigger>
+              </TabsList>
+              <TabsContent value={selectedSensorType} className="mt-4">
+                <div className="grid grid-cols-2 gap-2">
+                  {selectedSensorType === 'Level' && ['Level1', 'Level2', 'Level3', 'Level4', 'Level5', 'Level6'].map((column) => (
+                    <div key={column} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`column-${column}`}
+                        checked={visibleColumns.has(column)}
+                        onCheckedChange={(checked) => 
+                          handleColumnToggle(column, checked as boolean)
+                        }
+                      />
+                      <Label htmlFor={`column-${column}`} className="text-sm">
+                        {column}
+                      </Label>
+                    </div>
+                  ))}
+                  {selectedSensorType === 'Encoder' && ['Encoder3'].map((column) => (
+                    <div key={column} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`column-${column}`}
+                        checked={visibleColumns.has(column)}
+                        onCheckedChange={(checked) => 
+                          handleColumnToggle(column, checked as boolean)
+                        }
+                      />
+                      <Label htmlFor={`column-${column}`} className="text-sm">
+                        {column}
+                      </Label>
+                    </div>
+                  ))}
+                  {selectedSensorType === 'Angle' && ['Ang1', 'Ang2', 'Ang3'].map((column) => (
+                    <div key={column} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`column-${column}`}
+                        checked={visibleColumns.has(column)}
+                        onCheckedChange={(checked) => 
+                          handleColumnToggle(column, checked as boolean)
+                        }
+                      />
+                      <Label htmlFor={`column-${column}`} className="text-sm">
+                        {column}
+                      </Label>
+                    </div>
+                  ))}
+                </div>
+              </TabsContent>
+            </Tabs>
+          )}
+        </div>
         {/* 보정값 설정 패널 */}
         <div className="bg-muted/50 p-4 rounded-lg">
           <div className="flex items-center justify-between mb-3">
@@ -327,75 +396,7 @@ const DataCorrectionTab = memo(() => {
           )}
         </div>
 
-        {/* 차트 표시 데이터 선택 패널 */}
-        <div className="bg-muted/50 p-4 rounded-lg">
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="font-medium">차트 표시 데이터 선택</h4>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setIsCorrectionPanelCollapsed(!isCorrectionPanelCollapsed)}
-              className="h-6 w-6 p-0"
-            >
-              {isCorrectionPanelCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
-            </Button>
-          </div>
-          {!isCorrectionPanelCollapsed && (
-            <Tabs value={selectedSensorType} onValueChange={handleTabChange} className="w-full">
-              <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="Level">Level</TabsTrigger>
-                <TabsTrigger value="Encoder">Encoder</TabsTrigger>
-                <TabsTrigger value="Angle">Angle</TabsTrigger>
-              </TabsList>
-              <TabsContent value={selectedSensorType} className="mt-4">
-                <div className="grid grid-cols-2 gap-2">
-                  {selectedSensorType === 'Level' && ['Level1', 'Level2', 'Level3', 'Level4', 'Level5', 'Level6'].map((column) => (
-                    <div key={column} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={`column-${column}`}
-                        checked={visibleColumns.has(column)}
-                        onCheckedChange={(checked) => 
-                          handleColumnToggle(column, checked as boolean)
-                        }
-                      />
-                      <Label htmlFor={`column-${column}`} className="text-sm">
-                        {column}
-                      </Label>
-                    </div>
-                  ))}
-                  {selectedSensorType === 'Encoder' && ['Encoder3'].map((column) => (
-                    <div key={column} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={`column-${column}`}
-                        checked={visibleColumns.has(column)}
-                        onCheckedChange={(checked) => 
-                          handleColumnToggle(column, checked as boolean)
-                        }
-                      />
-                      <Label htmlFor={`column-${column}`} className="text-sm">
-                        {column}
-                      </Label>
-                    </div>
-                  ))}
-                  {selectedSensorType === 'Angle' && ['Ang1', 'Ang2', 'Ang3'].map((column) => (
-                    <div key={column} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={`column-${column}`}
-                        checked={visibleColumns.has(column)}
-                        onCheckedChange={(checked) => 
-                          handleColumnToggle(column, checked as boolean)
-                        }
-                      />
-                      <Label htmlFor={`column-${column}`} className="text-sm">
-                        {column}
-                      </Label>
-                    </div>
-                  ))}
-                </div>
-              </TabsContent>
-            </Tabs>
-          )}
-        </div>
+
 
         {/* 데이터 정보 패널 */}
         <div className="bg-muted/50 p-4 rounded-lg">
