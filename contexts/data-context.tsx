@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
   // 모든 컬럼에 대해 한 번에 이상치 감지 및 대체하는 함수
-  const detectAndReplaceOutliersForAllColumns = (data: any[], columns: string[], columnSettings: Record<string, {useIQR: boolean, iqrMultiplier: number, useZScore: boolean, zScoreThreshold: number}>) => {
+  const detectAndReplaceOutliersForAllColumns = (data: any[], columns: string[], columnSettings: Record<string, {useIQR: boolean, iqrMultiplier: number, useZScore: boolean, zScoreThreshold: number}>, applyMode: 'individual' | 'bulk', bulkSettings?: {useIQR: boolean, iqrMultiplier: number, useZScore: boolean, zScoreThreshold: number}) => {
     if (data.length === 0) return data
     
     let processedData = [...data]
@@ -10,8 +10,18 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
     
     // 각 컬럼별로 이상치 감지 및 대체
     columns.forEach(column => {
-      const settings = columnSettings[column]
-      if (!settings) return // 설정이 없으면 건너뜀
+      let settings
+      
+      if (applyMode === 'bulk' && bulkSettings) {
+        // 일괄 적용 모드: 모든 컬럼에 동일한 설정 사용
+        settings = bulkSettings
+        console.log(`일괄 적용 모드 - ${column}: IQR=${bulkSettings.useIQR}(${bulkSettings.iqrMultiplier}), Z-score=${bulkSettings.useZScore}(${bulkSettings.zScoreThreshold})`)
+      } else {
+        // 개별 적용 모드: 각 컬럼의 개별 설정 사용
+        settings = columnSettings[column]
+        if (!settings) return // 설정이 없으면 건너뜀
+        console.log(`개별 적용 모드 - ${column}: IQR=${settings.useIQR}(${settings.iqrMultiplier}), Z-score=${settings.useZScore}(${settings.zScoreThreshold})`)
+      }
       
       const beforeData = [...processedData]
       processedData = detectAndReplaceOutliersSimple(processedData, column, settings)
@@ -178,7 +188,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
         const nextValue = parseFloat(newData[nextValidIndex][column])
         replacementValue = (prevValue + nextValue) / 2
         
-        console.log(`${column}[${outlierIndex}]: ${newData[outlierIndex][column]} → ${replacementValue} (앞: ${prevValue}, 뒤: ${nextValue})`)
+        // console.log(`${column}[${outlierIndex}]: ${newData[outlierIndex][column]} → ${replacementValue} (앞: ${prevValue}, 뒤: ${nextValue})`)
       } else if (prevValidIndex !== -1) {
         // 앞에만 값이 있으면 앞의 값으로 대체
         replacementValue = parseFloat(newData[prevValidIndex][column])
@@ -271,6 +281,18 @@ interface DataContextType {
     zScoreThreshold: number
   }>
   
+  // 탭 변경 감지를 위한 상태
+  applyModeChanged: boolean
+  
+  // 현재 적용 모드와 일괄 설정
+  currentApplyMode: 'individual' | 'bulk'
+  bulkSettings: {
+    useIQR: boolean
+    iqrMultiplier: number
+    useZScore: boolean
+    zScoreThreshold: number
+  }
+  
   // 데이터 액션
   setProcessedData: (data: ProcessedData | null) => void
   setMetadata: (metadata: Metadata) => void
@@ -299,6 +321,12 @@ interface DataContextType {
   applyCorrections: () => void
   updateOutlierRemovalSettings: (column: string, settings: Partial<{useIQR: boolean, iqrMultiplier: number, useZScore: boolean, zScoreThreshold: number}>) => void
   applyAggregation: (aggregationType: string, outlierRemoval: boolean) => void
+  
+  // 탭 변경 관련 함수
+  setApplyModeChanged: (changed: boolean) => void
+  triggerOutlierReprocessing: () => void
+  setCurrentApplyMode: (mode: 'individual' | 'bulk') => void
+  setBulkSettings: (settings: {useIQR: boolean, iqrMultiplier: number, useZScore: boolean, zScoreThreshold: number}) => void
   
   // 데이터 접근 헬퍼
   getDataCsv: () => any[]
@@ -341,6 +369,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [aggregatedSelectedRows, setAggregatedSelectedRows] = useState<Set<number>>(new Set())
   const [hasModifications, setHasModifications] = useState(false)
   const [modificationHistory, setModificationHistory] = useState<any[]>([]) // 수정 히스토리
+  const [applyModeChanged, setApplyModeChanged] = useState(false) // 탭 변경 감지
+  const [currentApplyMode, setCurrentApplyMode] = useState<'individual' | 'bulk'>('individual')
+  const [bulkSettings, setBulkSettings] = useState({
+    useIQR: true,
+    iqrMultiplier: 1.5,
+    useZScore: true,
+    zScoreThreshold: 3.0
+  })
   
   // 이상치 제거 설정 - 컬럼별 설정
   const [outlierRemovalSettings, setOutlierRemovalSettings] = useState<Record<string, {
@@ -407,9 +443,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
         }
       }
       
-      // 보정값이 변경되면 자동으로 보정 적용
-      if (section === 'preprocessing' && rawData.length > 0) {
-        const corrected = rawData.map(row => {
+      // 보정값이 변경되면 자동으로 보정 적용 (이상치 처리된 데이터 사용)
+      if (section === 'preprocessing' && outlierRemovedData.length > 0) {
+        const corrected = outlierRemovedData.map(row => {
           const newRow = { ...row }
           Object.keys(newCorrectionData.preprocessing).forEach(correctionKey => {
             const correction = newCorrectionData.preprocessing[correctionKey]
@@ -628,10 +664,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   }, [processedData?.fileName, processedData?.filePath]) // processedData의 고유 식별자로 변경
 
-  // correctionData가 로드될 때 자동으로 보정 적용
+  // correctionData가 로드될 때 자동으로 보정 적용 (이상치 처리된 데이터 사용)
   useEffect(() => {
-    if (correctionData && correctionData.preprocessing && rawData.length > 0) {
-      const corrected = rawData.map(row => {
+    if (correctionData && correctionData.preprocessing && outlierRemovedData.length > 0) {
+      const corrected = outlierRemovedData.map(row => {
         const newRow = { ...row }
         Object.keys(correctionData.preprocessing).forEach(key => {
           const correction = correctionData.preprocessing[key]
@@ -647,7 +683,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const allIndices = new Set<number>(corrected.map((_, index) => index))
       setCorrectedSelectedRows(allIndices)
     }
-  }, [correctionData, rawData])
+  }, [correctionData, outlierRemovedData])
 
   // selectedRows나 rawData가 변경될 때 자동으로 이상치 제거 및 대체 적용
   useEffect(() => {
@@ -665,7 +701,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
       processedData = detectAndReplaceOutliersForAllColumns(
         processedData, 
         targetColumns, 
-        outlierRemovalSettings
+        outlierRemovalSettings,
+        currentApplyMode,
+        bulkSettings
       )
       
       // 처리 완료 후 전체 데이터 콘솔 출력
@@ -681,7 +719,42 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const allIndices = new Set<number>(processedData.map((_, index) => index))
       setOutlierRemovedSelectedRows(allIndices)
     }
-  }, [selectedRows, rawData, outlierRemovalSettings])
+  }, [selectedRows, rawData, outlierRemovalSettings, currentApplyMode, bulkSettings])
+
+  // 탭 변경 시 이상치 재처리
+  useEffect(() => {
+    if (applyModeChanged && rawData.length > 0) {
+      console.log('탭 변경 감지 - 이상치 재처리 시작')
+      
+      // 선택된 행이 있으면 해당 행만, 없으면 모든 데이터를 가져와서 이상치 제거 적용
+      const dataToProcess = selectedRows.size > 0 
+        ? rawData.filter((_, index) => selectedRows.has(index))
+        : rawData
+      
+      // 자동으로 이상치 감지 및 대체 적용
+      let processedData = [...dataToProcess]
+      const targetColumns = ['Level1', 'Level2', 'Level3', 'Level4', 'Level5', 'Level6', 'Encoder3', 'Ang1', 'Ang2', 'Ang3']
+      
+      // 모든 컬럼에 대해 한 번에 이상치 감지 및 대체 적용
+      processedData = detectAndReplaceOutliersForAllColumns(
+        processedData, 
+        targetColumns, 
+        outlierRemovalSettings,
+        currentApplyMode,
+        bulkSettings
+      )
+      
+      console.log('탭 변경에 의한 이상치 재처리 완료')
+      
+      setOutlierRemovedData(processedData)
+      // 이상치 제거 탭에서도 모든 데이터가 선택되도록 설정
+      const allIndices = new Set<number>(processedData.map((_, index) => index))
+      setOutlierRemovedSelectedRows(allIndices)
+      
+      // 재처리 완료 후 플래그 리셋
+      setApplyModeChanged(false)
+    }
+  }, [applyModeChanged, rawData, selectedRows, outlierRemovalSettings, currentApplyMode, bulkSettings])
 
   // outlierRemovedData가 변경될 때 자동으로 보정 탭으로 전달
   useEffect(() => {
@@ -800,6 +873,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  // 탭 변경 시 이상치 재처리 트리거
+  const triggerOutlierReprocessing = () => {
+    setApplyModeChanged(true)
+  }
+
   const value: DataContextType = {
     processedData,
     metadata,
@@ -816,6 +894,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
     aggregatedSelectedRows,
     hasModifications,
     outlierRemovalSettings,
+    applyModeChanged,
+    currentApplyMode,
+    bulkSettings,
     setProcessedData,
     setMetadata,
     setCorrectionData,
@@ -841,6 +922,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
     applyCorrections,
     updateOutlierRemovalSettings,
     applyAggregation,
+    setApplyModeChanged,
+    triggerOutlierReprocessing,
+    setCurrentApplyMode,
+    setBulkSettings,
     getDataCsv,
     getStepCsv,
     getMetaCsv,

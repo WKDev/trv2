@@ -20,9 +20,11 @@ import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { VirtualizedTable } from "@/components/virtualized-table"
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
+import { DataStatistics } from "@/components/data-statistics"
 import { useData } from "@/contexts/data-context"
 import { useMemo, memo, useEffect, useState } from "react"
-import { RotateCcw, Undo2, AlertTriangle, Check, ChevronDown, ChevronUp, Minimize2, Maximize2 } from "lucide-react"
+import { RotateCcw, Undo2, AlertTriangle, Check, ChevronDown } from "lucide-react"
 import { SensorType } from "@/components/chart-js-line-chart"
 import {
   Popover,
@@ -53,9 +55,7 @@ const RawDataTab = memo(() => {
   const [selectedSensorType, setSelectedSensorType] = useState<SensorType>('Level')
   const [visibleColumns, setVisibleColumns] = useState<Set<string>>(new Set(['Level1', 'Level2', 'Level3', 'Level4', 'Level5', 'Level6']))
   
-  // 패널 최소화 상태
-  const [isSensorPanelCollapsed, setIsSensorPanelCollapsed] = useState(false)
-  const [isDataInfoCollapsed, setIsDataInfoCollapsed] = useState(true)
+  // 패널 최소화 상태 (Accordion으로 대체되어 제거됨)
 
   // 데이터가 로드되면 rawData 초기화 (데이터 컨텍스트에서 처리됨)
 
@@ -234,7 +234,12 @@ const RawDataTab = memo(() => {
           <Card className="bg-card border-border shadow-sm">
             <CardHeader>
               <div className="flex items-center justify-between">
-                <CardTitle className="text-foreground">원본 데이터</CardTitle>
+                <div>
+                  <CardTitle className="text-foreground">원본 데이터</CardTitle>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    선택 데이터수: {selectedRows.size} / 전체 데이터 수: {rawData.length}
+                  </p>
+                </div>
                 
                 {/* 데이터 조작 버튼들 */}
                 <div className="flex items-center gap-2">
@@ -313,6 +318,8 @@ const RawDataTab = memo(() => {
                     if (!['UnixTimestamp', 'Elasped', 'Timestamp', 'Velocity', 'Encoder1', 'Encoder2'].includes(col)) {
                       if (col === 'Index') {
                         acc[col] = parseInt(row[col]) || 0
+                      } else if (['Level1', 'Level2', 'Level3', 'Level4', 'Level5', 'Level6', 'Encoder3', 'Ang1', 'Ang2'].includes(col)) {
+                        acc[col] = parseFloat((parseFloat(row[col]) || 0).toFixed(3))
                       } else {
                         acc[col] = parseFloat(row[col]) || 0
                       }
@@ -349,6 +356,12 @@ const RawDataTab = memo(() => {
               />
             </CardContent>
           </Card>
+          
+          {/* 데이터 통계 */}
+          <DataStatistics 
+            data={rawData} 
+            columns={['Level1', 'Level2', 'Level3', 'Level4', 'Level5', 'Level6', 'Encoder3', 'Ang1', 'Ang2', 'Ang3']} 
+          />
         </div>
         
         <div className="text-sm text-muted-foreground">
@@ -358,97 +371,69 @@ const RawDataTab = memo(() => {
       </div>
       
       <div className="space-y-4">
-        {/* 차트 표시 데이터 선택 패널 */}
-        <div className="bg-muted/50 p-4 rounded-lg">
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="font-medium">차트 표시 데이터 선택</h4>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setIsSensorPanelCollapsed(!isSensorPanelCollapsed)}
-              className="h-6 w-6 p-0"
-            >
-              {isSensorPanelCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
-            </Button>
-          </div>
-          {!isSensorPanelCollapsed && (
-            <Tabs value={selectedSensorType} onValueChange={handleTabChange} className="w-full">
-              <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="Level">Level</TabsTrigger>
-                <TabsTrigger value="Encoder">Encoder</TabsTrigger>
-                <TabsTrigger value="Angle">Angle</TabsTrigger>
-              </TabsList>
-              <TabsContent value={selectedSensorType} className="mt-4">
-                <div className="grid grid-cols-2 gap-2">
-                  {selectedSensorType === 'Level' && ['Level1', 'Level2', 'Level3', 'Level4', 'Level5', 'Level6'].map((column) => (
-                    <div key={column} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={`column-${column}`}
-                        checked={visibleColumns.has(column)}
-                        onCheckedChange={(checked) => 
-                          handleColumnToggle(column, checked as boolean)
-                        }
-                      />
-                      <Label htmlFor={`column-${column}`} className="text-sm">
-                        {column}
-                      </Label>
-                    </div>
-                  ))}
-                  {selectedSensorType === 'Encoder' && ['Encoder3'].map((column) => (
-                    <div key={column} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={`column-${column}`}
-                        checked={visibleColumns.has(column)}
-                        onCheckedChange={(checked) => 
-                          handleColumnToggle(column, checked as boolean)
-                        }
-                      />
-                      <Label htmlFor={`column-${column}`} className="text-sm">
-                        {column}
-                      </Label>
-                    </div>
-                  ))}
-                  {selectedSensorType === 'Angle' && ['Ang1', 'Ang2', 'Ang3'].map((column) => (
-                    <div key={column} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={`column-${column}`}
-                        checked={visibleColumns.has(column)}
-                        onCheckedChange={(checked) => 
-                          handleColumnToggle(column, checked as boolean)
-                        }
-                      />
-                      <Label htmlFor={`column-${column}`} className="text-sm">
-                        {column}
-                      </Label>
-                    </div>
-                  ))}
-                </div>
-              </TabsContent>
-            </Tabs>
-          )}
-        </div>
-
-        
-        <div className="bg-muted/50 p-4 rounded-lg">
-          <div className="flex items-center justify-between mb-2">
-            <h4 className="font-medium">데이터 정보</h4>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setIsDataInfoCollapsed(!isDataInfoCollapsed)}
-              className="h-6 w-6 p-0"
-            >
-              {isDataInfoCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
-            </Button>
-          </div>
-          {!isDataInfoCollapsed && (
-            <div className="text-sm space-y-1">
-              <p>총 행 수: {rawData.length}</p>
-              <p>선택된 행: {selectedRows.size}</p>
-              <p>백업 파일: data_prep_raw.csv</p>
-            </div>
-          )}
-        </div>
+        <Accordion type="multiple" defaultValue={["chart"]} className="w-full">
+          {/* 차트 표시 데이터 선택 패널 */}
+          <AccordionItem value="chart">
+            <AccordionTrigger className="px-4 py-3 bg-muted/50 rounded-lg">
+              <h4 className="font-medium">차트 표시 데이터 선택</h4>
+            </AccordionTrigger>
+            <AccordionContent className="px-4 pb-4">
+              <Tabs value={selectedSensorType} onValueChange={handleTabChange} className="w-full">
+                <TabsList className="grid w-full grid-cols-3">
+                  <TabsTrigger value="Level">Level</TabsTrigger>
+                  <TabsTrigger value="Encoder">Encoder</TabsTrigger>
+                  <TabsTrigger value="Angle">Angle</TabsTrigger>
+                </TabsList>
+                <TabsContent value={selectedSensorType} className="mt-4">
+                  <div className="grid grid-cols-2 gap-2">
+                    {selectedSensorType === 'Level' && ['Level1', 'Level2', 'Level3', 'Level4', 'Level5', 'Level6'].map((column) => (
+                      <div key={column} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`column-${column}`}
+                          checked={visibleColumns.has(column)}
+                          onCheckedChange={(checked) => 
+                            handleColumnToggle(column, checked as boolean)
+                          }
+                        />
+                        <Label htmlFor={`column-${column}`} className="text-sm">
+                          {column}
+                        </Label>
+                      </div>
+                    ))}
+                    {selectedSensorType === 'Encoder' && ['Encoder3'].map((column) => (
+                      <div key={column} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`column-${column}`}
+                          checked={visibleColumns.has(column)}
+                          onCheckedChange={(checked) => 
+                            handleColumnToggle(column, checked as boolean)
+                          }
+                        />
+                        <Label htmlFor={`column-${column}`} className="text-sm">
+                          {column}
+                        </Label>
+                      </div>
+                    ))}
+                    {selectedSensorType === 'Angle' && ['Ang1', 'Ang2', 'Ang3'].map((column) => (
+                      <div key={column} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`column-${column}`}
+                          checked={visibleColumns.has(column)}
+                          onCheckedChange={(checked) => 
+                            handleColumnToggle(column, checked as boolean)
+                          }
+                        />
+                        <Label htmlFor={`column-${column}`} className="text-sm">
+                          {column}
+                        </Label>
+                      </div>
+                    ))}
+                  </div>
+                </TabsContent>
+              </Tabs>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
       </div>
     </div>
   )

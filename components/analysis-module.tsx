@@ -83,40 +83,39 @@ export function AnalysisModule({
   hasCycleParam = false,
   hasRefLevel = true,
 }: AnalysisModuleProps) {
-  const { getDataCsv, hasData } = useData()
+  const { aggregatedData, hasData } = useData()
   const [data, setData] = useState(tableData)
   const [editingCell, setEditingCell] = useState<{ rowId: number; field: string } | null>(null)
   const [editValue, setEditValue] = useState("")
   const [chartData, setChartData] = useState(sampleData)
 
-  // Context에서 실제 데이터를 가져와서 차트 데이터로 변환
+  // Context에서 집계된 데이터를 가져와서 차트 데이터로 변환
   useEffect(() => {
-    if (hasData()) {
-      const rawData = getDataCsv()
+    if (hasData() && aggregatedData && aggregatedData.length > 0) {
+      // 집계된 데이터를 차트 형식으로 변환
+      const convertedData = aggregatedData.map((row: any, index: number) => ({
+        x: parseFloat(row.Travelled) || index, // Travelled 값을 x축으로 사용
+        y: row.Level1 || 0,
+        y2: row.Level2 || 0,
+      }))
       
-      if (rawData && rawData.length > 0) {
-        // 실제 데이터를 차트 형식으로 변환
-        const convertedData = rawData.map((row: any, index: number) => ({
-          x: index,
-          y: row.Level1 || 0,
-          y2: row.Level2 || 0,
-        }))
-        
-        setChartData(convertedData)
-        
-        // 테이블 데이터도 실제 데이터로 업데이트
-        const tableDataFromCsv = rawData.slice(0, 10).map((row: any, index: number) => ({
-          id: index + 1,
-          selected: true,
-          index: index + 1,
-          value1: row.Level1 || 0,
-          value2: row.Level2 || 0,
-          value3: row.Level3 || 0,
-        }))
-        setData(tableDataFromCsv)
-      }
+      setChartData(convertedData)
+      
+      // 테이블 데이터도 집계된 데이터로 업데이트 (Level5, Level6 포함)
+      const tableDataFromAggregated = aggregatedData.slice(0, 10).map((row: any, index: number) => ({
+        id: index + 1,
+        selected: true,
+        index: index + 1,
+        value1: row.Level1 || 0,
+        value2: row.Level2 || 0,
+        value3: row.Level3 || 0,
+        value4: row.Level4 || 0,
+        value5: row.Level5 || 0,
+        value6: row.Level6 || 0,
+      }))
+      setData(tableDataFromAggregated)
     }
-  }, [hasData, getDataCsv])
+  }, [hasData, aggregatedData])
 
   const [refLevel, setRefLevel] = useLocalStorage({
     key: `analysis-${moduleId}-refLevel`,

@@ -352,7 +352,7 @@ export const ChartJSLineChart = memo(({
             <PopoverTrigger asChild>
               <button
                 type="button"
-                className="text-sm text-muted-foreground px-2 py-1 rounded hover:bg-accent transition"
+                className="text-sm text-primary px-2 py-1 rounded hover:bg-primary/10 transition"
                 aria-label="단축키 안내"
               >
                 단축키

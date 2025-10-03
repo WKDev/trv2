@@ -3,7 +3,7 @@
 import { memo } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { RawDataTab } from "@/components/raw-data-tab"
-import { OutlierRemovalTab } from "@/components/outlier-removal-tab"
+import { OutlierProcessingTab } from "@/components/outlier-processing-tab"
 import { DataCorrectionTab } from "@/components/data-correction-tab"
 import { AggregationTab } from "@/components/aggregation-tab"
 import { ConnectionTab } from "@/components/connection-tab"
@@ -24,7 +24,7 @@ export const PreprocessingTabs = memo(() => {
       </TabsContent>
 
       <TabsContent value="outlier" className="mt-6">
-        <OutlierRemovalTab />
+        <OutlierProcessingTab />
       </TabsContent>
 
       <TabsContent value="correction" className="mt-6">

@@ -7,7 +7,9 @@ const nextConfig = {
     unoptimized: true
   },
   // 정적 파일 경로 설정
-  assetPrefix: process.env.NODE_ENV === 'production' ? './' : '',
+  // assetPrefix: process.env.NODE_ENV === 'production' ? './' : '',
+  assetPrefix: '',
+
   // Electron에서 사용할 수 있도록 설정
   distDir: 'out',
   // CORS 설정

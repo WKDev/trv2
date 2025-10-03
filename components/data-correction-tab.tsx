@@ -9,14 +9,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ReadOnlyVirtualizedTable } from "@/components/readonly-virtualized-table"
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
+import { DataStatistics } from "@/components/data-statistics"
 import { useData } from "@/contexts/data-context"
 import { memo, useState } from "react"
-import { ChevronDown, ChevronUp } from "lucide-react"
 import { SensorType } from "@/components/chart-js-line-chart"
 
 const DataCorrectionTab = memo(() => {
   const { 
     rawData,
+    outlierRemovedData,
     correctedData, 
     correctedSelectedRows, 
     setCorrectedSelectedRows, 
@@ -28,9 +30,7 @@ const DataCorrectionTab = memo(() => {
   } = useData()
 
   
-  // 패널 최소화 상태
-  const [isDataInfoCollapsed, setIsDataInfoCollapsed] = useState(true)
-  const [isCorrectionPanelCollapsed, setIsCorrectionPanelCollapsed] = useState(false)
+  // 패널 최소화 상태 (Accordion으로 대체되어 제거됨)
   
   // 센서 컨트롤 상태
   const [selectedSensorType, setSelectedSensorType] = useState<SensorType>('Level')
@@ -99,13 +99,13 @@ const DataCorrectionTab = memo(() => {
   }
 
   // 데이터가 없을 때는 로딩 상태 표시
-  if (!hasData() || !correctedData || correctedData.length === 0) {
+  if (!hasData() || !outlierRemovedData || outlierRemovedData.length === 0) {
     return (
       <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
         <div className="flex items-center justify-center py-12 text-muted-foreground">
           <div className="text-center">
             <p>보정할 데이터가 없습니다</p>
-            <p className="text-sm mt-2">RAW 데이터 탭에서 데이터를 수정하면 자동으로 전달됩니다</p>
+            <p className="text-sm mt-2">이상치 처리 탭에서 데이터를 처리하면 자동으로 전달됩니다</p>
           </div>
         </div>
         <div></div>
@@ -131,7 +131,12 @@ const DataCorrectionTab = memo(() => {
           <Card className="bg-card border-border shadow-sm">
             <CardHeader>
               <div className="flex items-center justify-between">
-                <CardTitle className="text-foreground">보정된 데이터</CardTitle>
+                <div>
+                  <CardTitle className="text-foreground">보정된 데이터</CardTitle>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    선택 데이터수: {correctedSelectedRows.size} / 전체 데이터 수: {correctedData.length}
+                  </p>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
@@ -144,6 +149,8 @@ const DataCorrectionTab = memo(() => {
                     if (!['UnixTimestamp', 'Elasped', 'Timestamp', 'Velocity', 'Encoder1', 'Encoder2'].includes(col)) {
                       if (col === 'Index') {
                         acc[col] = parseInt(row[col]) || 0
+                      } else if (['Level1', 'Level2', 'Level3', 'Level4', 'Level5', 'Level6', 'Encoder3', 'Ang1', 'Ang2'].includes(col)) {
+                        acc[col] = parseFloat((parseFloat(row[col]) || 0).toFixed(3))
                       } else {
                         acc[col] = parseFloat(row[col]) || 0
                       }
@@ -177,6 +184,12 @@ const DataCorrectionTab = memo(() => {
               />
             </CardContent>
           </Card>
+          
+          {/* 데이터 통계 */}
+          <DataStatistics 
+            data={correctedData} 
+            columns={['Level1', 'Level2', 'Level3', 'Level4', 'Level5', 'Level6', 'Encoder3', 'Ang1', 'Ang2', 'Ang3']} 
+          />
         </div>
         
         <div className="text-sm text-muted-foreground">
@@ -187,216 +200,177 @@ const DataCorrectionTab = memo(() => {
       </div>
       
       <div className="space-y-4">
-                {/* 차트 표시 데이터 선택 패널 */}
-                <div className="bg-muted/50 p-4 rounded-lg">
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="font-medium">차트 표시 데이터 선택</h4>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setIsCorrectionPanelCollapsed(!isCorrectionPanelCollapsed)}
-              className="h-6 w-6 p-0"
-            >
-              {isCorrectionPanelCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
-            </Button>
-          </div>
-          {!isCorrectionPanelCollapsed && (
-            <Tabs value={selectedSensorType} onValueChange={handleTabChange} className="w-full">
-              <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="Level">Level</TabsTrigger>
-                <TabsTrigger value="Encoder">Encoder</TabsTrigger>
-                <TabsTrigger value="Angle">Angle</TabsTrigger>
-              </TabsList>
-              <TabsContent value={selectedSensorType} className="mt-4">
-                <div className="grid grid-cols-2 gap-2">
-                  {selectedSensorType === 'Level' && ['Level1', 'Level2', 'Level3', 'Level4', 'Level5', 'Level6'].map((column) => (
-                    <div key={column} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={`column-${column}`}
-                        checked={visibleColumns.has(column)}
-                        onCheckedChange={(checked) => 
-                          handleColumnToggle(column, checked as boolean)
-                        }
-                      />
-                      <Label htmlFor={`column-${column}`} className="text-sm">
-                        {column}
-                      </Label>
-                    </div>
-                  ))}
-                  {selectedSensorType === 'Encoder' && ['Encoder3'].map((column) => (
-                    <div key={column} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={`column-${column}`}
-                        checked={visibleColumns.has(column)}
-                        onCheckedChange={(checked) => 
-                          handleColumnToggle(column, checked as boolean)
-                        }
-                      />
-                      <Label htmlFor={`column-${column}`} className="text-sm">
-                        {column}
-                      </Label>
-                    </div>
-                  ))}
-                  {selectedSensorType === 'Angle' && ['Ang1', 'Ang2', 'Ang3'].map((column) => (
-                    <div key={column} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={`column-${column}`}
-                        checked={visibleColumns.has(column)}
-                        onCheckedChange={(checked) => 
-                          handleColumnToggle(column, checked as boolean)
-                        }
-                      />
-                      <Label htmlFor={`column-${column}`} className="text-sm">
-                        {column}
-                      </Label>
-                    </div>
-                  ))}
-                </div>
-              </TabsContent>
-            </Tabs>
-          )}
-        </div>
-        {/* 보정값 설정 패널 */}
-        <div className="bg-muted/50 p-4 rounded-lg">
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="font-medium">보정값 설정</h4>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setIsCorrectionPanelCollapsed(!isCorrectionPanelCollapsed)}
-              className="h-6 w-6 p-0"
-            >
-              {isCorrectionPanelCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
-            </Button>
-          </div>
-          {!isCorrectionPanelCollapsed && (
-            <div className="space-y-4">
-              {/* Level 센서 보정값 */}
-              <div>
-                <h5 className="text-sm font-medium mb-2">Level 센서</h5>
-                <div className="grid grid-cols-1 gap-2">
-                  {['Level1', 'Level2', 'Level3', 'Level4', 'Level5', 'Level6'].map((key) => (
-                    <div key={key} className="space-y-1">
-                      <Label className="text-xs">{key}</Label>
-                      <div className="flex gap-1">
-                        <div className="flex-1">
-                          <Label className="text-xs text-muted-foreground">Scaler</Label>
-                          <Input
-                            type="number"
-                            step="0.001"
-                            value={getCorrectionValue('preprocessing', key, 'Scaler')}
-                            onChange={(e) => handleCorrectionChange(key, 'Scaler', e.target.value)}
-                            className="h-8 text-xs"
-                          />
-                        </div>
-                        <div className="flex-1">
-                          <Label className="text-xs text-muted-foreground">Offset</Label>
-                          <Input
-                            type="number"
-                            step="0.001"
-                            value={getCorrectionValue('preprocessing', key, 'offset')}
-                            onChange={(e) => handleCorrectionChange(key, 'offset', e.target.value)}
-                            className="h-8 text-xs"
-                          />
+        <Accordion type="multiple" defaultValue={["chart", "correction"]} className="w-full">
+          {/* 차트 표시 데이터 선택 패널 */}
+          <AccordionItem value="chart">
+            <AccordionTrigger className="px-4 py-3 bg-muted/50 rounded-lg">
+              <h4 className="font-medium">차트 표시 데이터 선택</h4>
+            </AccordionTrigger>
+            <AccordionContent className="px-4 pb-4">
+              <Tabs value={selectedSensorType} onValueChange={handleTabChange} className="w-full">
+                <TabsList className="grid w-full grid-cols-3">
+                  <TabsTrigger value="Level">Level</TabsTrigger>
+                  <TabsTrigger value="Encoder">Encoder</TabsTrigger>
+                  <TabsTrigger value="Angle">Angle</TabsTrigger>
+                </TabsList>
+                <TabsContent value={selectedSensorType} className="mt-4">
+                  <div className="grid grid-cols-2 gap-2">
+                    {selectedSensorType === 'Level' && ['Level1', 'Level2', 'Level3', 'Level4', 'Level5', 'Level6'].map((column) => (
+                      <div key={column} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`column-${column}`}
+                          checked={visibleColumns.has(column)}
+                          onCheckedChange={(checked) => 
+                            handleColumnToggle(column, checked as boolean)
+                          }
+                        />
+                        <Label htmlFor={`column-${column}`} className="text-sm">
+                          {column}
+                        </Label>
+                      </div>
+                    ))}
+                    {selectedSensorType === 'Encoder' && ['Encoder3'].map((column) => (
+                      <div key={column} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`column-${column}`}
+                          checked={visibleColumns.has(column)}
+                          onCheckedChange={(checked) => 
+                            handleColumnToggle(column, checked as boolean)
+                          }
+                        />
+                        <Label htmlFor={`column-${column}`} className="text-sm">
+                          {column}
+                        </Label>
+                      </div>
+                    ))}
+                    {selectedSensorType === 'Angle' && ['Ang1', 'Ang2', 'Ang3'].map((column) => (
+                      <div key={column} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`column-${column}`}
+                          checked={visibleColumns.has(column)}
+                          onCheckedChange={(checked) => 
+                            handleColumnToggle(column, checked as boolean)
+                          }
+                        />
+                        <Label htmlFor={`column-${column}`} className="text-sm">
+                          {column}
+                        </Label>
+                      </div>
+                    ))}
+                  </div>
+                </TabsContent>
+              </Tabs>
+            </AccordionContent>
+          </AccordionItem>
+
+          {/* 보정값 설정 패널 */}
+          <AccordionItem value="correction">
+            <AccordionTrigger className="px-4 py-3 bg-muted/50 rounded-lg">
+              <h4 className="font-medium">보정값 설정</h4>
+            </AccordionTrigger>
+            <AccordionContent className="px-4 pb-4">
+              <div className="space-y-4">
+                {/* Level 센서 보정값 */}
+                <div>
+                  <h5 className="text-sm font-medium mb-2">Level 센서</h5>
+                  <div className="grid grid-cols-1 gap-2">
+                    {['Level1', 'Level2', 'Level3', 'Level4', 'Level5', 'Level6'].map((key) => (
+                      <div key={key} className="space-y-1">
+                        <Label className="text-xs">{key}</Label>
+                        <div className="flex gap-1">
+                          <div className="flex-1">
+                            <Label className="text-xs text-muted-foreground">Scaler</Label>
+                            <Input
+                              type="number"
+                              step="0.001"
+                              value={getCorrectionValue('preprocessing', key, 'Scaler')}
+                              onChange={(e) => handleCorrectionChange(key, 'Scaler', e.target.value)}
+                              className="h-8 text-xs"
+                            />
+                          </div>
+                          <div className="flex-1">
+                            <Label className="text-xs text-muted-foreground">Offset</Label>
+                            <Input
+                              type="number"
+                              step="0.001"
+                              value={getCorrectionValue('preprocessing', key, 'offset')}
+                              onChange={(e) => handleCorrectionChange(key, 'offset', e.target.value)}
+                              className="h-8 text-xs"
+                            />
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
-              
-              {/* Encoder 센서 보정값 */}
-              <div>
-                <h5 className="text-sm font-medium mb-2">Encoder 센서</h5>
-                <div className="space-y-1">
-                  <Label className="text-xs">Encoder3</Label>
-                  <div className="flex gap-1">
-                    <div className="flex-1">
-                      <Label className="text-xs text-muted-foreground">Scaler</Label>
-                      <Input
-                        type="number"
-                        step="0.001"
-                        value={getCorrectionValue('preprocessing', 'Encoder3', 'Scaler')}
-                        onChange={(e) => handleCorrectionChange('Encoder3', 'Scaler', e.target.value)}
-                        className="h-8 text-xs"
-                      />
-                    </div>
-                    <div className="flex-1">
-                      <Label className="text-xs text-muted-foreground">Offset</Label>
-                      <Input
-                        type="number"
-                        step="0.001"
-                        value={getCorrectionValue('preprocessing', 'Encoder3', 'offset')}
-                        onChange={(e) => handleCorrectionChange('Encoder3', 'offset', e.target.value)}
-                        className="h-8 text-xs"
-                      />
+                
+                {/* Encoder 센서 보정값 */}
+                <div>
+                  <h5 className="text-sm font-medium mb-2">Encoder 센서</h5>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Encoder3</Label>
+                    <div className="flex gap-1">
+                      <div className="flex-1">
+                        <Label className="text-xs text-muted-foreground">Scaler</Label>
+                        <Input
+                          type="number"
+                          step="0.001"
+                          value={getCorrectionValue('preprocessing', 'Encoder3', 'Scaler')}
+                          onChange={(e) => handleCorrectionChange('Encoder3', 'Scaler', e.target.value)}
+                          className="h-8 text-xs"
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <Label className="text-xs text-muted-foreground">Offset</Label>
+                        <Input
+                          type="number"
+                          step="0.001"
+                          value={getCorrectionValue('preprocessing', 'Encoder3', 'offset')}
+                          onChange={(e) => handleCorrectionChange('Encoder3', 'offset', e.target.value)}
+                          className="h-8 text-xs"
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-              
-              {/* Angle 센서 보정값 */}
-              <div>
-                <h5 className="text-sm font-medium mb-2">Angle 센서</h5>
-                <div className="grid grid-cols-1 gap-2">
-                  {['Ang1', 'Ang2', 'Ang3'].map((key) => (
-                    <div key={key} className="space-y-1">
-                      <Label className="text-xs">{key}</Label>
-                      <div className="flex gap-1">
-                        <div className="flex-1">
-                          <Label className="text-xs text-muted-foreground">Scaler</Label>
-                          <Input
-                            type="number"
-                            step="0.001"
-                            value={getCorrectionValue('preprocessing', key, 'Scaler')}
-                            onChange={(e) => handleCorrectionChange(key, 'Scaler', e.target.value)}
-                            className="h-8 text-xs"
-                          />
-                        </div>
-                        <div className="flex-1">
-                          <Label className="text-xs text-muted-foreground">Offset</Label>
-                          <Input
-                            type="number"
-                            step="0.001"
-                            value={getCorrectionValue('preprocessing', key, 'offset')}
-                            onChange={(e) => handleCorrectionChange(key, 'offset', e.target.value)}
-                            className="h-8 text-xs"
-                          />
+                
+                {/* Angle 센서 보정값 */}
+                <div>
+                  <h5 className="text-sm font-medium mb-2">Angle 센서</h5>
+                  <div className="grid grid-cols-1 gap-2">
+                    {['Ang1', 'Ang2', 'Ang3'].map((key) => (
+                      <div key={key} className="space-y-1">
+                        <Label className="text-xs">{key}</Label>
+                        <div className="flex gap-1">
+                          <div className="flex-1">
+                            <Label className="text-xs text-muted-foreground">Scaler</Label>
+                            <Input
+                              type="number"
+                              step="0.001"
+                              value={getCorrectionValue('preprocessing', key, 'Scaler')}
+                              onChange={(e) => handleCorrectionChange(key, 'Scaler', e.target.value)}
+                              className="h-8 text-xs"
+                            />
+                          </div>
+                          <div className="flex-1">
+                            <Label className="text-xs text-muted-foreground">Offset</Label>
+                            <Input
+                              type="number"
+                              step="0.001"
+                              value={getCorrectionValue('preprocessing', key, 'offset')}
+                              onChange={(e) => handleCorrectionChange(key, 'offset', e.target.value)}
+                              className="h-8 text-xs"
+                            />
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
-        </div>
-
-
-
-        {/* 데이터 정보 패널 */}
-        <div className="bg-muted/50 p-4 rounded-lg">
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="font-medium">데이터 정보</h4>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setIsDataInfoCollapsed(!isDataInfoCollapsed)}
-              className="h-6 w-6 p-0"
-            >
-              {isDataInfoCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
-            </Button>
-          </div>
-          {!isDataInfoCollapsed && (
-            <div className="space-y-2">
-              <div className="text-sm space-y-1">
-                <p>총 행 수: {correctedData.length}</p>
-                <p>선택된 행: {correctedSelectedRows.size}</p>
-                <p>백업 파일: data_prep_corrected.csv</p>
-              </div>
-            </div>
-          )}
-        </div>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
       </div>
     </div>
   )

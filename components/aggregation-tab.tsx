@@ -8,10 +8,12 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
+import { DataStatistics } from "@/components/data-statistics"
 import { useData } from "@/contexts/data-context"
 import { memo, useState, useEffect } from "react"
-import { ChevronDown, ChevronUp } from "lucide-react"
 import { SensorType } from "@/components/chart-js-line-chart"
+import { ReadOnlyVirtualizedTable } from "./readonly-virtualized-table"
 
 const AggregationTab = memo(() => {
   const { 
@@ -27,12 +29,10 @@ const AggregationTab = memo(() => {
   const [selectedSensorType, setSelectedSensorType] = useState<SensorType>('Level')
   const [visibleColumns, setVisibleColumns] = useState<Set<string>>(new Set(['Level1', 'Level2', 'Level3', 'Level4', 'Level5', 'Level6']))
   
-  // 패널 최소화 상태
-  const [isDataInfoCollapsed, setIsDataInfoCollapsed] = useState(true)
-  const [isAggregationPanelCollapsed, setIsAggregationPanelCollapsed] = useState(false)
+  // 패널 최소화 상태 (Accordion으로 대체되어 제거됨)
   
   // 집계 설정 상태
-  const [aggregationInterval, setAggregationInterval] = useState<number>(10)
+  const [aggregationInterval, setAggregationInterval] = useState<number>(1.0)
   const [aggregationMethod, setAggregationMethod] = useState<'median' | 'mean' | 'ema'>('mean')
   const [emaSpan, setEmaSpan] = useState<number>(5)
 
@@ -41,8 +41,12 @@ const AggregationTab = memo(() => {
     if (correctedData && correctedData.length > 0) {
       const newAggregatedData = aggregateData(correctedData, aggregationInterval, aggregationMethod, aggregationMethod === 'ema' ? emaSpan : undefined)
       setAggregatedData(newAggregatedData)
+      
+      // 집계된 데이터가 변경되면 모든 행을 선택하도록 설정
+      const allIndices = new Set<number>(newAggregatedData.map((_, index) => index))
+      setAggregatedSelectedRows(allIndices)
     }
-  }, [correctedData, aggregationInterval, aggregationMethod, emaSpan, setAggregatedData])
+  }, [correctedData, aggregationInterval, aggregationMethod, emaSpan, setAggregatedData, setAggregatedSelectedRows])
 
   const handleRowSelection = (rowIndex: number, checked: boolean) => {
     const newSelectedRows = new Set(aggregatedSelectedRows)
@@ -127,8 +131,20 @@ const AggregationTab = memo(() => {
     const result = []
     const numericColumns = ['Level1', 'Level2', 'Level3', 'Level4', 'Level5', 'Level6', 'Encoder3', 'Ang1', 'Ang2', 'Ang3']
     
-    for (let i = 0; i < data.length; i += interval) {
-      const chunk = data.slice(i, i + interval)
+    // Travelled 열을 기준으로 거리 구간별로 집계
+    const maxTravelled = Math.max(...data.map(row => parseFloat(row.Travelled) || 0))
+    const numIntervals = Math.ceil(maxTravelled / interval)
+    
+    for (let i = 0; i < numIntervals; i++) {
+      const startDistance = i * interval
+      const endDistance = (i + 1) * interval
+      
+      // 해당 거리 구간에 속하는 데이터 필터링
+      const chunk = data.filter(row => {
+        const travelled = parseFloat(row.Travelled) || 0
+        return travelled >= startDistance && travelled < endDistance
+      })
+      
       if (chunk.length === 0) continue
       
       const aggregatedRow: any = {}
@@ -152,6 +168,9 @@ const AggregationTab = memo(() => {
           } else {
             aggregatedRow[key] = 0
           }
+        } else if (key === 'Travelled') {
+          // Travelled는 구간의 중간값으로 설정
+          aggregatedRow[key] = (startDistance + endDistance) / 2
         } else {
           // 숫자가 아닌 컬럼은 첫 번째 값 사용
           aggregatedRow[key] = chunk[0][key]
@@ -166,12 +185,23 @@ const AggregationTab = memo(() => {
 
   // 집계 설정 변경 핸들러
   const handleAggregationIntervalChange = (value: string) => {
-    const numValue = parseInt(value) || 1
+    const numValue = parseFloat(value) || 1
+    
+    // 집계구간이 0.1보다 큰지 검증
+    if (numValue <= 0.1) {
+      alert('집계구간은 0.1보다 커야 합니다.')
+      return
+    }
+    
     setAggregationInterval(numValue)
     // 보정된 데이터를 기반으로 집계된 데이터 업데이트
     if (correctedData && correctedData.length > 0) {
       const newAggregatedData = aggregateData(correctedData, numValue, aggregationMethod, aggregationMethod === 'ema' ? emaSpan : undefined)
       setAggregatedData(newAggregatedData)
+      
+      // 집계된 데이터가 변경되면 모든 행을 선택하도록 설정
+      const allIndices = new Set<number>(newAggregatedData.map((_, index) => index))
+      setAggregatedSelectedRows(allIndices)
     }
   }
 
@@ -181,6 +211,10 @@ const AggregationTab = memo(() => {
     if (correctedData && correctedData.length > 0) {
       const newAggregatedData = aggregateData(correctedData, aggregationInterval, method, method === 'ema' ? emaSpan : undefined)
       setAggregatedData(newAggregatedData)
+      
+      // 집계된 데이터가 변경되면 모든 행을 선택하도록 설정
+      const allIndices = new Set<number>(newAggregatedData.map((_, index) => index))
+      setAggregatedSelectedRows(allIndices)
     }
   }
 
@@ -191,6 +225,10 @@ const AggregationTab = memo(() => {
     if (aggregationMethod === 'ema' && correctedData && correctedData.length > 0) {
       const newAggregatedData = aggregateData(correctedData, aggregationInterval, 'ema', numValue)
       setAggregatedData(newAggregatedData)
+      
+      // 집계된 데이터가 변경되면 모든 행을 선택하도록 설정
+      const allIndices = new Set<number>(newAggregatedData.map((_, index) => index))
+      setAggregatedSelectedRows(allIndices)
     }
   }
 
@@ -242,21 +280,65 @@ const AggregationTab = memo(() => {
           <Card className="bg-card border-border shadow-sm">
             <CardHeader>
               <div className="flex items-center justify-between">
-                <CardTitle className="text-foreground">집계된 데이터</CardTitle>
+                <div>
+                  <CardTitle className="text-foreground">집계된 데이터</CardTitle>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    선택 데이터수: {aggregatedSelectedRows.size} / 전체 데이터 수: {aggregatedData.length}
+                  </p>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
-              <DataChartTable 
-                title="집계된 데이터" 
-                dataType="data" 
-                data={aggregatedData}
+              <ReadOnlyVirtualizedTable
+                data={aggregatedData.map((row: any, index: number) => ({
+                  id: index + 1,
+                  selected: aggregatedSelectedRows.has(index),
+                  index: index + 1,
+                  ...Object.keys(row).reduce((acc, col) => {
+                    if (!['UnixTimestamp', 'Elasped', 'Timestamp', 'Velocity', 'Encoder1', 'Encoder2'].includes(col)) {
+                      if (col === 'Index') {
+                        acc[col] = parseInt(row[col]) || 0
+                      } else if (['Level1', 'Level2', 'Level3', 'Level4', 'Level5', 'Level6', 'Encoder3', 'Ang1', 'Ang2'].includes(col)) {
+                        acc[col] = parseFloat((parseFloat(row[col]) || 0).toFixed(3))
+                      } else {
+                        acc[col] = parseFloat(row[col]) || 0
+                      }
+                    }
+                    return acc
+                  }, {} as Record<string, number>)
+                }))}
+                columns={correctedData.length > 0 ? ['Index', 'Travelled', 'Level1', 'Level2', 'Level3', 'Level4', 'Level5', 'Level6', 'Encoder3', 'Ang1', 'Ang2', 'Ang3'].filter(col => 
+                  correctedData[0] && correctedData[0].hasOwnProperty(col)
+                ) : []}
                 showCheckboxes={true}
                 onRowSelection={handleRowSelection}
                 onSelectAll={handleSelectAll}
                 selectedRows={aggregatedSelectedRows}
+                rowHeight={32}
+                visibleRows={25}
+                columnWidths={{
+                  'Index': 60,
+                  'Travelled': 100,
+                  'Level1': 80,
+                  'Level2': 80,
+                  'Level3': 80,
+                  'Level4': 80,
+                  'Level5': 80,
+                  'Level6': 80,
+                  'Encoder3': 80,
+                  'Ang1': 80,
+                  'Ang2': 80,
+                  'Ang3': 80
+                }}
               />
             </CardContent>
           </Card>
+          
+          {/* 데이터 통계 */}
+          <DataStatistics 
+            data={aggregatedData} 
+            columns={['Level1', 'Level2', 'Level3', 'Level4', 'Level5', 'Level6', 'Encoder3', 'Ang1', 'Ang2', 'Ang3']} 
+          />
         </div>
         
         <div className="text-sm text-muted-foreground">
@@ -266,156 +348,142 @@ const AggregationTab = memo(() => {
       </div>
       
       <div className="space-y-4">
-        {/* 차트 표시 데이터 선택 패널 */}
-        <div className="bg-muted/50 p-4 rounded-lg">
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="font-medium">차트 표시 데이터 선택</h4>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setIsAggregationPanelCollapsed(!isAggregationPanelCollapsed)}
-              className="h-6 w-6 p-0"
-            >
-              {isAggregationPanelCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
-            </Button>
-          </div>
-          {!isAggregationPanelCollapsed && (
-            <Tabs value={selectedSensorType} onValueChange={handleTabChange} className="w-full">
-              <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="Level">Level</TabsTrigger>
-                <TabsTrigger value="Encoder">Encoder</TabsTrigger>
-                <TabsTrigger value="Angle">Angle</TabsTrigger>
-              </TabsList>
-              <TabsContent value={selectedSensorType} className="mt-4">
-                <div className="grid grid-cols-2 gap-2">
-                  {selectedSensorType === 'Level' && ['Level1', 'Level2', 'Level3', 'Level4', 'Level5', 'Level6'].map((column) => (
-                    <div key={column} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={`column-${column}`}
-                        checked={visibleColumns.has(column)}
-                        onCheckedChange={(checked) => 
-                          handleColumnToggle(column, checked as boolean)
-                        }
-                      />
-                      <Label htmlFor={`column-${column}`} className="text-sm">
-                        {column}
-                      </Label>
-                    </div>
-                  ))}
-                  {selectedSensorType === 'Encoder' && ['Encoder3'].map((column) => (
-                    <div key={column} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={`column-${column}`}
-                        checked={visibleColumns.has(column)}
-                        onCheckedChange={(checked) => 
-                          handleColumnToggle(column, checked as boolean)
-                        }
-                      />
-                      <Label htmlFor={`column-${column}`} className="text-sm">
-                        {column}
-                      </Label>
-                    </div>
-                  ))}
-                  {selectedSensorType === 'Angle' && ['Ang1', 'Ang2', 'Ang3'].map((column) => (
-                    <div key={column} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={`column-${column}`}
-                        checked={visibleColumns.has(column)}
-                        onCheckedChange={(checked) => 
-                          handleColumnToggle(column, checked as boolean)
-                        }
-                      />
-                      <Label htmlFor={`column-${column}`} className="text-sm">
-                        {column}
-                      </Label>
-                    </div>
-                  ))}
-                </div>
-              </TabsContent>
-            </Tabs>
-          )}
-        </div>
-
-        {/* 데이터 집계 설정 패널 */}
-        <div className="bg-muted/50 p-4 rounded-lg">
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="font-medium">데이터 집계</h4>
-          </div>
-          <div className="space-y-4">
-            <div>
-              <Label className="text-sm">집계 간격</Label>
-              <Input
-                type="number"
-                min="1"
-                value={aggregationInterval}
-                onChange={(e) => handleAggregationIntervalChange(e.target.value)}
-                className="mt-1"
-              />
-            </div>
-            
-            <div>
-              <Label className="text-sm mb-2 block">집계 방식</Label>
-              <Tabs value={aggregationMethod} onValueChange={(value) => handleAggregationMethodChange(value as 'median' | 'mean' | 'ema')} className="w-full">
+        <Accordion type="multiple" defaultValue={["chart", "aggregation", "selected"]} className="w-full">
+          {/* 차트 표시 데이터 선택 패널 */}
+          <AccordionItem value="chart">
+            <AccordionTrigger className="px-4 py-3 bg-muted/50 rounded-lg">
+              <h4 className="font-medium">차트 표시 데이터 선택</h4>
+            </AccordionTrigger>
+            <AccordionContent className="px-4 pb-4">
+              <Tabs value={selectedSensorType} onValueChange={handleTabChange} className="w-full">
                 <TabsList className="grid w-full grid-cols-3">
-                  <TabsTrigger value="median">중간값</TabsTrigger>
-                  <TabsTrigger value="mean">평균값</TabsTrigger>
-                  <TabsTrigger value="ema">EMA</TabsTrigger>
+                  <TabsTrigger value="Level">Level</TabsTrigger>
+                  <TabsTrigger value="Encoder">Encoder</TabsTrigger>
+                  <TabsTrigger value="Angle">Angle</TabsTrigger>
                 </TabsList>
+                <TabsContent value={selectedSensorType} className="mt-4">
+                  <div className="grid grid-cols-2 gap-2">
+                    {selectedSensorType === 'Level' && ['Level1', 'Level2', 'Level3', 'Level4', 'Level5', 'Level6'].map((column) => (
+                      <div key={column} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`column-${column}`}
+                          checked={visibleColumns.has(column)}
+                          onCheckedChange={(checked) => 
+                            handleColumnToggle(column, checked as boolean)
+                          }
+                        />
+                        <Label htmlFor={`column-${column}`} className="text-sm">
+                          {column}
+                        </Label>
+                      </div>
+                    ))}
+                    {selectedSensorType === 'Encoder' && ['Encoder3'].map((column) => (
+                      <div key={column} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`column-${column}`}
+                          checked={visibleColumns.has(column)}
+                          onCheckedChange={(checked) => 
+                            handleColumnToggle(column, checked as boolean)
+                          }
+                        />
+                        <Label htmlFor={`column-${column}`} className="text-sm">
+                          {column}
+                        </Label>
+                      </div>
+                    ))}
+                    {selectedSensorType === 'Angle' && ['Ang1', 'Ang2', 'Ang3'].map((column) => (
+                      <div key={column} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`column-${column}`}
+                          checked={visibleColumns.has(column)}
+                          onCheckedChange={(checked) => 
+                            handleColumnToggle(column, checked as boolean)
+                          }
+                        />
+                        <Label htmlFor={`column-${column}`} className="text-sm">
+                          {column}
+                        </Label>
+                      </div>
+                    ))}
+                  </div>
+                </TabsContent>
               </Tabs>
-            </div>
-            
-            {aggregationMethod === 'ema' && (
-              <div>
-                <Label className="text-sm">EMA span</Label>
-                <Input
-                  type="number"
-                  min="1"
-                  value={emaSpan}
-                  onChange={(e) => handleEmaSpanChange(e.target.value)}
-                  className="mt-1"
-                />
+            </AccordionContent>
+          </AccordionItem>
+
+          {/* 데이터 집계 설정 패널 */}
+          <AccordionItem value="aggregation">
+            <AccordionTrigger className="px-4 py-3 bg-muted/50 rounded-lg">
+              <h4 className="font-medium">데이터 집계</h4>
+            </AccordionTrigger>
+            <AccordionContent className="px-4 pb-4">
+              <div className="space-y-4">
+                <div>
+                  <Label className="text-sm">집계 간격 (m)</Label>
+                  <Input
+                    type="number"
+                    min="0.1"
+                    step="0.1"
+                    value={aggregationInterval}
+                    onChange={(e) => handleAggregationIntervalChange(e.target.value)}
+                    className="mt-1"
+                    placeholder="예: 1.0"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Travelled 열 기준으로 m단위 집계구간 (0.1보다 커야 함)
+                  </p>
+                </div>
+                
+                <div>
+                  <Label className="text-sm mb-2 block">집계 방식</Label>
+                  <Tabs value={aggregationMethod} onValueChange={(value) => handleAggregationMethodChange(value as 'median' | 'mean' | 'ema')} className="w-full">
+                    <TabsList className="grid w-full grid-cols-3">
+                      <TabsTrigger value="median">중간값</TabsTrigger>
+                      <TabsTrigger value="mean">평균값</TabsTrigger>
+                      <TabsTrigger value="ema">EMA</TabsTrigger>
+                    </TabsList>
+                  </Tabs>
+                </div>
+                
+                {aggregationMethod === 'ema' && (
+                  <div>
+                    <Label className="text-sm">EMA span</Label>
+                    <Input
+                      type="number"
+                      min="1"
+                      value={emaSpan}
+                      onChange={(e) => handleEmaSpanChange(e.target.value)}
+                      className="mt-1"
+                    />
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        </div>
-        
-        <div className="bg-muted/50 p-4 rounded-lg">
-          <div className="flex items-center justify-between mb-2">
-            <h4 className="font-medium">선택된 데이터</h4>
-            <span className="text-sm text-muted-foreground">{aggregatedSelectedRows.size}개</span>
-          </div>
-          <Button 
-            className="w-full" 
-            disabled={aggregatedSelectedRows.size === 0}
-            onClick={() => console.log('연결부 단차로 이동')}
-            size="sm"
-          >
-            연결부 단차로 이동
-          </Button>
-        </div>
-        
-        <div className="bg-muted/50 p-4 rounded-lg">
-          <div className="flex items-center justify-between mb-2">
-            <h4 className="font-medium">데이터 정보</h4>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setIsDataInfoCollapsed(!isDataInfoCollapsed)}
-              className="h-6 w-6 p-0"
-            >
-              {isDataInfoCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
-            </Button>
-          </div>
-          {!isDataInfoCollapsed && (
-            <div className="text-sm space-y-1">
-              <p>총 행 수: {aggregatedData.length}</p>
-              <p>선택된 행: {aggregatedSelectedRows.size}</p>
-              <p>집계 간격: {aggregationInterval}</p>
-              <p>집계 방식: {aggregationMethod === 'median' ? '중간값' : aggregationMethod === 'mean' ? '평균값' : 'EMA'}</p>
-              {aggregationMethod === 'ema' && <p>EMA span: {emaSpan}</p>}
-            </div>
-          )}
-        </div>
+            </AccordionContent>
+          </AccordionItem>
+          
+          {/* 선택된 데이터 패널 */}
+          <AccordionItem value="selected">
+            <AccordionTrigger className="px-4 py-3 bg-muted/50 rounded-lg">
+              <h4 className="font-medium">선택된 데이터</h4>
+            </AccordionTrigger>
+            <AccordionContent className="px-4 pb-4">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">선택된 항목</span>
+                  <span className="text-sm font-medium">{aggregatedSelectedRows.size}개</span>
+                </div>
+                <Button 
+                  className="w-full" 
+                  disabled={aggregatedSelectedRows.size === 0}
+                  onClick={() => console.log('연결부 단차로 이동')}
+                  size="sm"
+                >
+                  연결부 단차로 이동
+                </Button>
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
       </div>
     </div>
   )
