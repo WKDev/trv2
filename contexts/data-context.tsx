@@ -1,6 +1,211 @@
 "use client"
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+  // 모든 컬럼에 대해 한 번에 이상치 감지 및 대체하는 함수
+  const detectAndReplaceOutliersForAllColumns = (data: any[], columns: string[], columnSettings: Record<string, {useIQR: boolean, iqrMultiplier: number, useZScore: boolean, zScoreThreshold: number}>) => {
+    if (data.length === 0) return data
+    
+    let processedData = [...data]
+    let totalOutliers = 0
+    
+    // 각 컬럼별로 이상치 감지 및 대체
+    columns.forEach(column => {
+      const settings = columnSettings[column]
+      if (!settings) return // 설정이 없으면 건너뜀
+      
+      const beforeData = [...processedData]
+      processedData = detectAndReplaceOutliersSimple(processedData, column, settings)
+      
+      // 실제로 변경된 값의 개수 계산
+      let changedCount = 0
+      for (let i = 0; i < processedData.length; i++) {
+        if (beforeData[i][column] !== processedData[i][column]) {
+          changedCount++
+        }
+      }
+      
+      if (changedCount > 0) {
+        console.log(`이상치 처리 완료 - ${column}: ${changedCount}개 값 대체`)
+        totalOutliers += changedCount
+      }
+    })
+    
+    console.log(`전체 이상치 처리 완료 - 총 ${totalOutliers}개 이상치 대체`)
+    return processedData
+  }
+
+  // 간단하고 안정적인 이상치 처리 함수
+  const detectAndReplaceOutliersSimple = (data: any[], column: string, settings: {useIQR: boolean, iqrMultiplier: number, useZScore: boolean, zScoreThreshold: number}) => {
+    const values = data.map(row => row[column]).filter(val => val !== undefined && val !== null && !isNaN(val))
+    if (values.length === 0) return data
+
+    let processedData = [...data]
+    console.log(`\n=== ${column} 컬럼 이상치 처리 시작 ===`)
+    
+    // 1차: IQR 기반 이상치 감지 및 대체
+    if (settings.useIQR) {
+      console.log(`1차 IQR 처리 시작 (배수: ${settings.iqrMultiplier})`)
+      processedData = detectAndReplaceOutliersByIQR(processedData, column, settings.iqrMultiplier)
+    } else {
+      console.log(`IQR 처리 건너뜀`)
+    }
+    
+    // 2차: Z-score 기반 이상치 감지 및 대체 (IQR 처리된 데이터에 대해)
+    if (settings.useZScore) {
+      console.log(`2차 Z-score 처리 시작 (임계값: ${settings.zScoreThreshold})`)
+      processedData = detectAndReplaceOutliersByZScore(processedData, column, settings.zScoreThreshold)
+    } else {
+      console.log(`Z-score 처리 건너뜀`)
+    }
+    
+    console.log(`=== ${column} 컬럼 이상치 처리 완료 ===\n`)
+    return processedData
+  }
+
+  // IQR 기반 이상치 감지 및 대체 함수
+  const detectAndReplaceOutliersByIQR = (data: any[], column: string, iqrMultiplier: number) => {
+    // 숫자로 변환된 값들만 추출
+    const numericValues = data.map(row => parseFloat(row[column])).filter(val => !isNaN(val))
+    if (numericValues.length === 0) return data
+
+    // IQR 계산
+    const sortedValues = [...numericValues].sort((a, b) => a - b)
+    const q1Index = Math.floor(sortedValues.length * 0.25)
+    const q3Index = Math.floor(sortedValues.length * 0.75)
+    const q1 = sortedValues[q1Index]
+    const q3 = sortedValues[q3Index]
+    const iqr = q3 - q1
+    
+    const lowerBound = q1 - (iqr * iqrMultiplier)
+    const upperBound = q3 + (iqr * iqrMultiplier)
+    
+    console.log(`${column} 컬럼 IQR 경계: ${lowerBound.toFixed(3)} ~ ${upperBound.toFixed(3)}`)
+    
+    // IQR 이상치 인덱스 찾기 - 숫자로 변환해서 비교
+    const outlierIndices: number[] = []
+    data.forEach((row, index) => {
+      const val = parseFloat(row[column])
+      if (!isNaN(val)) {
+        if (val < lowerBound || val > upperBound) {
+          outlierIndices.push(index)
+        }
+      }
+    })
+    
+    if (outlierIndices.length > 0) {
+      console.log(`${column} 컬럼 IQR 이상치 감지: ${outlierIndices.length}개`)
+      return replaceOutliersWithInterpolation(data, column, outlierIndices)
+    }
+    
+    return data
+  }
+
+  // Z-score 기반 이상치 감지 및 대체 함수
+  const detectAndReplaceOutliersByZScore = (data: any[], column: string, zScoreThreshold: number) => {
+    // 숫자로 변환된 값들만 추출
+    const numericValues = data.map(row => parseFloat(row[column])).filter(val => !isNaN(val))
+    if (numericValues.length === 0) {
+      console.log(`${column} 컬럼 Z-score: 유효한 값이 없음`)
+      return data
+    }
+
+    const mean = numericValues.reduce((sum, val) => sum + val, 0) / numericValues.length
+    const variance = numericValues.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / numericValues.length
+    const std = Math.sqrt(variance)
+    
+    console.log(`${column} 컬럼 Z-score 통계: 평균=${mean.toFixed(3)}, 표준편차=${std.toFixed(3)}`)
+    
+    if (std === 0) {
+      console.log(`${column} 컬럼 Z-score: 표준편차가 0이므로 처리 건너뜀`)
+      return data
+    }
+    
+    // Z-score 이상치 인덱스 찾기 - 숫자로 변환해서 비교
+    const outlierIndices: number[] = []
+    data.forEach((row, index) => {
+      const val = parseFloat(row[column])
+      if (!isNaN(val)) {
+        const zScore = Math.abs((val - mean) / std)
+        if (zScore > zScoreThreshold) {
+          outlierIndices.push(index)
+        }
+      }
+    })
+    
+    console.log(`${column} 컬럼 Z-score 이상치 감지: ${outlierIndices.length}개 (임계값: ${zScoreThreshold})`)
+    
+    if (outlierIndices.length > 0) {
+      return replaceOutliersWithInterpolation(data, column, outlierIndices)
+    }
+    
+    return data
+  }
+
+  // 이상치를 전후 값으로 대체하는 함수
+  const replaceOutliersWithInterpolation = (data: any[], column: string, outlierIndices: number[]) => {
+    if (outlierIndices.length === 0) return data
+
+    const newData = [...data]
+    const outlierSet = new Set(outlierIndices) // 이상치 인덱스 집합
+    
+    // 모든 이상치를 한 번에 처리
+    outlierIndices.forEach(outlierIndex => {
+      if (outlierIndex < 0 || outlierIndex >= newData.length) return
+      
+      // 앞쪽에서 유효한 값 찾기 (이상치가 아닌 원본 값)
+      let prevValidIndex = -1
+      for (let i = outlierIndex - 1; i >= 0; i--) {
+        if (!outlierSet.has(i) && newData[i] && newData[i][column] !== undefined && newData[i][column] !== null && !isNaN(parseFloat(newData[i][column]))) {
+          prevValidIndex = i
+          break
+        }
+      }
+      
+      // 뒤쪽에서 유효한 값 찾기 (이상치가 아닌 원본 값)
+      let nextValidIndex = -1
+      for (let i = outlierIndex + 1; i < newData.length; i++) {
+        if (!outlierSet.has(i) && newData[i] && newData[i][column] !== undefined && newData[i][column] !== null && !isNaN(parseFloat(newData[i][column]))) {
+          nextValidIndex = i
+          break
+        }
+      }
+      
+      let replacementValue = newData[outlierIndex][column] // 기본값은 원래 값
+      
+      if (prevValidIndex !== -1 && nextValidIndex !== -1) {
+        // 전후로 값이 있으면 평균 사용 (더 안정적)
+        const prevValue = parseFloat(newData[prevValidIndex][column])
+        const nextValue = parseFloat(newData[nextValidIndex][column])
+        replacementValue = (prevValue + nextValue) / 2
+        
+        console.log(`${column}[${outlierIndex}]: ${newData[outlierIndex][column]} → ${replacementValue} (앞: ${prevValue}, 뒤: ${nextValue})`)
+      } else if (prevValidIndex !== -1) {
+        // 앞에만 값이 있으면 앞의 값으로 대체
+        replacementValue = parseFloat(newData[prevValidIndex][column])
+        console.log(`${column}[${outlierIndex}]: ${newData[outlierIndex][column]} → ${replacementValue} (앞의 값 사용)`)
+      } else if (nextValidIndex !== -1) {
+        // 뒤에만 값이 있으면 뒤의 값으로 대체
+        replacementValue = parseFloat(newData[nextValidIndex][column])
+        console.log(`${column}[${outlierIndex}]: ${newData[outlierIndex][column]} → ${replacementValue} (뒤의 값 사용)`)
+      } else {
+        // 양쪽 모두 없으면 열의 중앙값 사용
+        const validValues = data.map(row => parseFloat(row[column])).filter(val => !isNaN(val))
+        if (validValues.length > 0) {
+          validValues.sort((a, b) => a - b)
+          replacementValue = validValues[Math.floor(validValues.length / 2)]
+          console.log(`${column}[${outlierIndex}]: ${newData[outlierIndex][column]} → ${replacementValue} (중앙값 사용)`)
+        }
+      }
+      
+      // 값 대체
+      newData[outlierIndex] = {
+        ...newData[outlierIndex],
+        [column]: replacementValue
+      }
+    })
+    
+    return newData
+  }
 
 interface ProcessedData {
   success: boolean
@@ -50,11 +255,21 @@ interface DataContextType {
   rawData: any[]
   originalRawData: any[] // 원본 데이터 백업
   correctedData: any[]
+  outlierRemovedData: any[] // 이상치 제거된 데이터
   aggregatedData: any[]
   selectedRows: Set<number>
   correctedSelectedRows: Set<number>
+  outlierRemovedSelectedRows: Set<number>
   aggregatedSelectedRows: Set<number>
   hasModifications: boolean // 수정 여부 추적
+  
+  // 이상치 제거 설정
+  outlierRemovalSettings: Record<string, {
+    useIQR: boolean
+    iqrMultiplier: number
+    useZScore: boolean
+    zScoreThreshold: number
+  }>
   
   // 데이터 액션
   setProcessedData: (data: ProcessedData | null) => void
@@ -67,9 +282,11 @@ interface DataContextType {
   // 단계별 데이터 액션
   setRawData: React.Dispatch<React.SetStateAction<any[]>>
   setCorrectedData: React.Dispatch<React.SetStateAction<any[]>>
+  setOutlierRemovedData: React.Dispatch<React.SetStateAction<any[]>>
   setAggregatedData: React.Dispatch<React.SetStateAction<any[]>>
   setSelectedRows: (rows: Set<number>) => void
   setCorrectedSelectedRows: (rows: Set<number>) => void
+  setOutlierRemovedSelectedRows: (rows: Set<number>) => void
   setAggregatedSelectedRows: (rows: Set<number>) => void
   resetToRawData: () => void
   resetToOriginalData: () => void // 완전 원본 복원
@@ -77,8 +294,10 @@ interface DataContextType {
   resetToFileRecordTime: () => Promise<void> // 파일 기록 시점으로 복원
   undoLastModification: () => void // 마지막 수정 되돌리기
   transferSelectedDataToCorrection: () => void // 선택된 데이터를 보정 탭으로 전달
+  transferSelectedDataToOutlierRemoval: () => void // 선택된 데이터를 이상치 제거 탭으로 전달
   transferSelectedDataToAggregation: () => void // 선택된 데이터를 집계 탭으로 전달
   applyCorrections: () => void
+  updateOutlierRemovalSettings: (column: string, settings: Partial<{useIQR: boolean, iqrMultiplier: number, useZScore: boolean, zScoreThreshold: number}>) => void
   applyAggregation: (aggregationType: string, outlierRemoval: boolean) => void
   
   // 데이터 접근 헬퍼
@@ -114,12 +333,33 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [rawData, setRawData] = useState<any[]>([])
   const [originalRawData, setOriginalRawData] = useState<any[]>([])
   const [correctedData, setCorrectedData] = useState<any[]>([])
+  const [outlierRemovedData, setOutlierRemovedData] = useState<any[]>([])
   const [aggregatedData, setAggregatedData] = useState<any[]>([])
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set())
   const [correctedSelectedRows, setCorrectedSelectedRows] = useState<Set<number>>(new Set())
+  const [outlierRemovedSelectedRows, setOutlierRemovedSelectedRows] = useState<Set<number>>(new Set())
   const [aggregatedSelectedRows, setAggregatedSelectedRows] = useState<Set<number>>(new Set())
   const [hasModifications, setHasModifications] = useState(false)
   const [modificationHistory, setModificationHistory] = useState<any[]>([]) // 수정 히스토리
+  
+  // 이상치 제거 설정 - 컬럼별 설정
+  const [outlierRemovalSettings, setOutlierRemovalSettings] = useState<Record<string, {
+    useIQR: boolean
+    iqrMultiplier: number
+    useZScore: boolean
+    zScoreThreshold: number
+  }>>({
+    Level1: { useIQR: true, iqrMultiplier: 1.5, useZScore: true, zScoreThreshold: 3 },
+    Level2: { useIQR: true, iqrMultiplier: 1.5, useZScore: true, zScoreThreshold: 3 },
+    Level3: { useIQR: true, iqrMultiplier: 1.5, useZScore: true, zScoreThreshold: 3 },
+    Level4: { useIQR: true, iqrMultiplier: 1.5, useZScore: true, zScoreThreshold: 3 },
+    Level5: { useIQR: true, iqrMultiplier: 1.5, useZScore: true, zScoreThreshold: 3 },
+    Level6: { useIQR: true, iqrMultiplier: 1.5, useZScore: true, zScoreThreshold: 3 },
+    Encoder3: { useIQR: true, iqrMultiplier: 1.5, useZScore: true, zScoreThreshold: 3 },
+    Ang1: { useIQR: true, iqrMultiplier: 1.5, useZScore: true, zScoreThreshold: 3 },
+    Ang2: { useIQR: true, iqrMultiplier: 1.5, useZScore: true, zScoreThreshold: 3 },
+    Ang3: { useIQR: true, iqrMultiplier: 1.5, useZScore: true, zScoreThreshold: 3 },
+  })
 
   const updateMetadata = (field: string, value: string) => {
     setMetadata((prev) => ({ ...prev, [field]: value }))
@@ -184,6 +424,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         // 보정 탭에서도 모든 데이터가 선택되도록 설정
         const allIndices = new Set<number>(corrected.map((_, index) => index))
         setCorrectedSelectedRows(allIndices)
+        // useEffect에서 자동으로 집계 탭으로 전달됨
       }
       
       return newCorrectionData
@@ -278,7 +519,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const resetToFileRecordTime = async () => {
     // 파일 기록 시점으로 복원 (data_raw.csv에서 복원)
     try {
-      if (processedData?.filePath && window.electronAPI) {
+      if (processedData?.filePath && typeof window !== 'undefined' && window.electronAPI) {
         // 현재 압축 해제된 경로를 찾아야 함 (임시 디렉토리)
         // 실제로는 압축 해제된 경로를 저장해두어야 함
         console.log('data_raw.csv에서 복원 시도...')
@@ -319,40 +560,39 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setCorrectedSelectedRows(allIndices)
   }
 
+  const transferSelectedDataToOutlierRemoval = () => {
+    // 선택된 데이터를 이상치 제거 탭으로 전달
+    const selectedData = correctedData.filter((_, index) => correctedSelectedRows.has(index))
+    setOutlierRemovedData(selectedData)
+    // 이상치 제거 탭에서도 모든 데이터가 선택되도록 설정
+    const allIndices = new Set<number>(selectedData.map((_, index) => index))
+    setOutlierRemovedSelectedRows(allIndices)
+  }
+
   const transferSelectedDataToAggregation = () => {
     // 선택된 데이터를 집계 탭으로 전달
-    const selectedData = correctedData.filter((_, index) => correctedSelectedRows.has(index))
+    const selectedData = outlierRemovedData.filter((_, index) => outlierRemovedSelectedRows.has(index))
     setAggregatedData(selectedData)
     // 집계 탭에서도 모든 데이터가 선택되도록 설정
     const allIndices = new Set<number>(selectedData.map((_, index) => index))
     setAggregatedSelectedRows(allIndices)
   }
 
-  // 커스텀 setCorrectedData 함수 - 자동 집계 탭 전달
-  const handleSetCorrectedData = (newData: any[] | ((prev: any[]) => any[])) => {
-    setCorrectedData((prevData) => {
-      const updatedData = typeof newData === 'function' ? newData(prevData) : newData
-      
-      // 데이터가 변경되었는지 확인
-      const hasChanged = JSON.stringify(prevData) !== JSON.stringify(updatedData)
-      if (hasChanged) {
-        // 데이터 보정이 변경되면 자동으로 집계 탭으로 전달
-        setAggregatedData([...updatedData])
-        // 집계 탭에서도 모든 데이터가 선택되도록 설정
-        const allIndices = new Set<number>(updatedData.map((_, index) => index))
-        setAggregatedSelectedRows(allIndices)
-      }
-      
-      return updatedData
-    })
-  }
 
   // 데이터가 로드될 때 rawData 초기화
   useEffect(() => {
     if (hasData()) {
       const originalData = getDataCsv()
-      setRawData([...originalData])
-      setOriginalRawData([...originalData]) // 원본 데이터 백업
+      
+      // Travelled 기준으로 오름차순 정렬
+      const sortedData = [...originalData].sort((a, b) => {
+        const travelledA = parseFloat(a.Travelled) || 0
+        const travelledB = parseFloat(b.Travelled) || 0
+        return travelledA - travelledB
+      })
+      
+      setRawData(sortedData)
+      setOriginalRawData([...sortedData]) // 정렬된 데이터를 원본으로 백업
       
       // 전처리 단계별 데이터 초기화
       setAggregatedData([])
@@ -381,7 +621,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       
       // 기본적으로 모든 데이터 선택 - setTimeout으로 다음 렌더링 사이클에서 실행
       setTimeout(() => {
-        const allIndices = new Set<number>(originalData.map((_: any, index: number) => index))
+        const allIndices = new Set<number>(sortedData.map((_: any, index: number) => index))
         setSelectedRows(allIndices)
         // 선택된 행이 설정되면 handleSetSelectedRows에서 자동으로 보정 탭으로 전달됨
       }, 0)
@@ -409,20 +649,69 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   }, [correctionData, rawData])
 
-  // selectedRows나 rawData가 변경될 때 자동으로 보정 탭으로 전달
+  // selectedRows나 rawData가 변경될 때 자동으로 이상치 제거 및 대체 적용
   useEffect(() => {
     if (rawData.length > 0) {
-      // 선택된 행이 있으면 해당 행만, 없으면 모든 데이터를 보정 탭으로 전달
-      const dataToTransfer = selectedRows.size > 0 
+      // 선택된 행이 있으면 해당 행만, 없으면 모든 데이터를 가져와서 이상치 제거 적용
+      const dataToProcess = selectedRows.size > 0 
         ? rawData.filter((_, index) => selectedRows.has(index))
         : rawData
+      
+      // 자동으로 이상치 감지 및 대체 적용
+      let processedData = [...dataToProcess]
+      const targetColumns = ['Level1', 'Level2', 'Level3', 'Level4', 'Level5', 'Level6', 'Encoder3', 'Ang1', 'Ang2', 'Ang3']
+      
+      // 모든 컬럼에 대해 한 번에 이상치 감지 및 대체 적용
+      processedData = detectAndReplaceOutliersForAllColumns(
+        processedData, 
+        targetColumns, 
+        outlierRemovalSettings
+      )
+      
+      // 처리 완료 후 전체 데이터 콘솔 출력
+      console.log('\n=== 이상치 처리 완료 - 전체 데이터 ===')
+      console.log(`원본 데이터 개수: ${dataToProcess.length}`)
+      console.log(`처리 후 데이터 개수: ${processedData.length}`)
+      console.log('처리된 데이터 샘플 (처음 5개):', processedData.slice(0, 5))
+      console.log('처리된 데이터 샘플 (마지막 5개):', processedData.slice(-5))
+      console.log('=== 이상치 처리 완료 ===\n')
+      
+      setOutlierRemovedData(processedData)
+      // 이상치 제거 탭에서도 모든 데이터가 선택되도록 설정
+      const allIndices = new Set<number>(processedData.map((_, index) => index))
+      setOutlierRemovedSelectedRows(allIndices)
+    }
+  }, [selectedRows, rawData, outlierRemovalSettings])
+
+  // outlierRemovedData가 변경될 때 자동으로 보정 탭으로 전달
+  useEffect(() => {
+    if (outlierRemovedData.length > 0) {
+      // 선택된 행이 있으면 해당 행만, 없으면 모든 데이터를 보정 탭으로 전달
+      const dataToTransfer = outlierRemovedSelectedRows.size > 0 
+        ? outlierRemovedData.filter((_, index) => outlierRemovedSelectedRows.has(index))
+        : outlierRemovedData
       
       setCorrectedData([...dataToTransfer])
       // 보정 탭에서도 모든 데이터가 선택되도록 설정
       const allIndices = new Set<number>(dataToTransfer.map((_, index) => index))
       setCorrectedSelectedRows(allIndices)
     }
-  }, [selectedRows, rawData])
+  }, [outlierRemovedData, outlierRemovedSelectedRows])
+
+  // correctedData가 변경될 때 자동으로 집계 탭으로 전달
+  useEffect(() => {
+    if (correctedData.length > 0) {
+      // 선택된 행이 있으면 해당 행만, 없으면 모든 데이터를 집계 탭으로 전달
+      const dataToTransfer = correctedSelectedRows.size > 0 
+        ? correctedData.filter((_, index) => correctedSelectedRows.has(index))
+        : correctedData
+      
+      setAggregatedData([...dataToTransfer])
+      // 집계 탭에서도 모든 데이터가 선택되도록 설정
+      const allIndices = new Set<number>(dataToTransfer.map((_, index) => index))
+      setAggregatedSelectedRows(allIndices)
+    }
+  }, [correctedData, correctedSelectedRows])
 
   const applyCorrections = () => {
     if (!correctionData || !correctionData.preprocessing) return
@@ -439,6 +728,55 @@ export function DataProvider({ children }: { children: ReactNode }) {
     })
     
     setCorrectedData(corrected)
+  }
+
+  // IQR 기반 이상치 제거 함수
+  const removeOutliersIQR = (data: any[], column: string, multiplier: number = 1.5) => {
+    const values = data.map(row => row[column]).filter(val => val !== undefined && val !== null && !isNaN(val))
+    if (values.length === 0) return data
+
+    values.sort((a, b) => a - b)
+    const q1Index = Math.floor(values.length * 0.25)
+    const q3Index = Math.floor(values.length * 0.75)
+    const q1 = values[q1Index]
+    const q3 = values[q3Index]
+    const iqr = q3 - q1
+    
+    const lowerBound = q1 - (iqr * multiplier)
+    const upperBound = q3 + (iqr * multiplier)
+    
+    return data.filter(row => {
+      const val = row[column]
+      return val >= lowerBound && val <= upperBound
+    })
+  }
+
+  // Z-score 기반 이상치 제거 함수
+  const removeOutliersZScore = (data: any[], column: string, threshold: number = 3) => {
+    const values = data.map(row => row[column]).filter(val => val !== undefined && val !== null && !isNaN(val))
+    if (values.length === 0) return data
+
+    const mean = values.reduce((sum, val) => sum + val, 0) / values.length
+    const variance = values.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / values.length
+    const stdDev = Math.sqrt(variance)
+    
+    if (stdDev === 0) return data
+    
+    return data.filter(row => {
+      const val = row[column]
+      const zScore = Math.abs((val - mean) / stdDev)
+      return zScore <= threshold
+    })
+  }
+
+  const updateOutlierRemovalSettings = (column: string, settings: Partial<{useIQR: boolean, iqrMultiplier: number, useZScore: boolean, zScoreThreshold: number}>) => {
+    setOutlierRemovalSettings(prev => ({
+      ...prev,
+      [column]: {
+        ...prev[column],
+        ...settings
+      }
+    }))
   }
 
   const applyAggregation = (aggregationType: string, outlierRemoval: boolean) => {
@@ -470,11 +808,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
     rawData,
     originalRawData,
     correctedData,
+    outlierRemovedData,
     aggregatedData,
     selectedRows,
     correctedSelectedRows,
+    outlierRemovedSelectedRows,
     aggregatedSelectedRows,
     hasModifications,
+    outlierRemovalSettings,
     setProcessedData,
     setMetadata,
     setCorrectionData,
@@ -482,10 +823,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
     updateCorrectionData,
     setIsProcessing,
     setRawData: handleSetRawData,
-    setCorrectedData: handleSetCorrectedData,
+    setCorrectedData,
+    setOutlierRemovedData,
     setAggregatedData,
     setSelectedRows: handleSetSelectedRows,
     setCorrectedSelectedRows,
+    setOutlierRemovedSelectedRows,
     setAggregatedSelectedRows,
     resetToRawData,
     resetToOriginalData,
@@ -493,8 +836,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
     resetToFileRecordTime,
     undoLastModification,
     transferSelectedDataToCorrection,
+    transferSelectedDataToOutlierRemoval,
     transferSelectedDataToAggregation,
     applyCorrections,
+    updateOutlierRemovalSettings,
     applyAggregation,
     getDataCsv,
     getStepCsv,

@@ -44,6 +44,7 @@ const DataCorrectionTab = memo(() => {
       newSelectedRows.delete(rowIndex)
     }
     setCorrectedSelectedRows(newSelectedRows)
+    // DataContext의 useEffect에서 자동으로 집계 탭으로 전달됨
   }
 
   const handleSelectAll = (checked: boolean) => {
@@ -53,6 +54,7 @@ const DataCorrectionTab = memo(() => {
     } else {
       setCorrectedSelectedRows(new Set())
     }
+    // DataContext의 useEffect에서 자동으로 집계 탭으로 전달됨
   }
 
 
@@ -93,34 +95,7 @@ const DataCorrectionTab = memo(() => {
   const handleCorrectionChange = (key: string, field: 'Scaler' | 'offset', value: string) => {
     const numValue = parseFloat(value) || 0
     updateCorrectionData('preprocessing', key, field, numValue)
-    
-    // 보정값이 변경되면 즉시 테이블 데이터 업데이트
-    if (rawData && rawData.length > 0) {
-      const updatedCorrectionData = {
-        ...correctionData,
-        preprocessing: {
-          ...correctionData?.preprocessing,
-          [key]: {
-            ...correctionData?.preprocessing?.[key],
-            [field]: numValue
-          }
-        }
-      }
-      
-      // 모든 보정값을 적용하여 새로운 데이터 생성
-      const corrected = rawData.map(row => {
-        const newRow = { ...row }
-        Object.keys(updatedCorrectionData.preprocessing || {}).forEach(correctionKey => {
-          const correction = updatedCorrectionData.preprocessing[correctionKey]
-          if (newRow[correctionKey] !== undefined && correction) {
-            newRow[correctionKey] = (newRow[correctionKey] * (correction.Scaler || 1)) + (correction.offset || 0)
-          }
-        })
-        return newRow
-      })
-      
-      setCorrectedData(corrected)
-    }
+    // DataContext의 updateCorrectionData에서 자동으로 보정 데이터 업데이트 및 집계 탭으로 전달됨
   }
 
   // 데이터가 없을 때는 로딩 상태 표시
@@ -205,7 +180,8 @@ const DataCorrectionTab = memo(() => {
         </div>
         
         <div className="text-sm text-muted-foreground">
-          <p>• 보정값 변경 시 자동으로 집계 및 이상치 제거 탭으로 전달됩니다</p>
+          <p>• 이상치 제거된 데이터에 Scale & Offset 보정을 적용합니다</p>
+          <p>• 보정값 변경 시 자동으로 집계 탭으로 전달됩니다</p>
           <p>• 각 셀 데이터를 편집하거나 행을 삭제할 수 없습니다 (읽기 전용)</p>
         </div>
       </div>

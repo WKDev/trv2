@@ -352,7 +352,7 @@ const RawDataTab = memo(() => {
         </div>
         
         <div className="text-sm text-muted-foreground">
-          <p>• 데이터 수정 시 자동으로 [데이터 보정] 탭으로 전달됩니다</p>
+          <p>• 데이터 수정 시 자동으로 [이상치 제거] 탭으로 전달됩니다</p>
           <p>• 데이터 수정 후 초기화 버튼으로 원본 상태로 되돌릴 수 있습니다</p>
         </div>
       </div>

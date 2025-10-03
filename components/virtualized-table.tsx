@@ -69,12 +69,16 @@ export const VirtualizedTable = memo(({
   // 컨테이너 높이 설정
   useEffect(() => {
     const updateHeight = () => {
-      setContainerHeight(Math.min(600, window.innerHeight * 0.6))
+      if (typeof window !== 'undefined') {
+        setContainerHeight(Math.min(600, window.innerHeight * 0.6))
+      }
     }
     
     updateHeight()
-    window.addEventListener('resize', updateHeight)
-    return () => window.removeEventListener('resize', updateHeight)
+    if (typeof window !== 'undefined') {
+      window.addEventListener('resize', updateHeight)
+      return () => window.removeEventListener('resize', updateHeight)
+    }
   }, [])
 
   const handleToggleSelect = (id: number) => {

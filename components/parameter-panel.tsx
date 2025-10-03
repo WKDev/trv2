@@ -29,18 +29,120 @@ const ParameterPanel = memo(({ parameters: initialParameters }: ParameterPanelPr
   // debounce를 위한 ref
   const debounceRefs = useRef<{ [key: string]: NodeJS.Timeout }>({})
   
-  const parameterStorageHooks = initialParameters.map((param) => ({
-    scaler: useElectronStorage({
-      key: `preprocess-${param.name}-scaler`,
-      defaultValue: param.scaler,
-      debounceMs: 100,
-    }),
-    offset: useElectronStorage({
-      key: `preprocess-${param.name}-offset`,
-      defaultValue: param.offset,
-      debounceMs: 100,
-    }),
-  }))
+  // Create individual storage hooks for each parameter
+  const level1Scaler = useElectronStorage({
+    key: 'preprocess-Level1-scaler',
+    defaultValue: 1,
+    debounceMs: 100,
+  })
+  const level1Offset = useElectronStorage({
+    key: 'preprocess-Level1-offset',
+    defaultValue: 0,
+    debounceMs: 100,
+  })
+  const level2Scaler = useElectronStorage({
+    key: 'preprocess-Level2-scaler',
+    defaultValue: 1,
+    debounceMs: 100,
+  })
+  const level2Offset = useElectronStorage({
+    key: 'preprocess-Level2-offset',
+    defaultValue: 0,
+    debounceMs: 100,
+  })
+  const level3Scaler = useElectronStorage({
+    key: 'preprocess-Level3-scaler',
+    defaultValue: 1,
+    debounceMs: 100,
+  })
+  const level3Offset = useElectronStorage({
+    key: 'preprocess-Level3-offset',
+    defaultValue: 0,
+    debounceMs: 100,
+  })
+  const level4Scaler = useElectronStorage({
+    key: 'preprocess-Level4-scaler',
+    defaultValue: 1,
+    debounceMs: 100,
+  })
+  const level4Offset = useElectronStorage({
+    key: 'preprocess-Level4-offset',
+    defaultValue: 0,
+    debounceMs: 100,
+  })
+  const level5Scaler = useElectronStorage({
+    key: 'preprocess-Level5-scaler',
+    defaultValue: 1,
+    debounceMs: 100,
+  })
+  const level5Offset = useElectronStorage({
+    key: 'preprocess-Level5-offset',
+    defaultValue: 0,
+    debounceMs: 100,
+  })
+  const level6Scaler = useElectronStorage({
+    key: 'preprocess-Level6-scaler',
+    defaultValue: 1,
+    debounceMs: 100,
+  })
+  const level6Offset = useElectronStorage({
+    key: 'preprocess-Level6-offset',
+    defaultValue: 0,
+    debounceMs: 100,
+  })
+  const encoder3Scaler = useElectronStorage({
+    key: 'preprocess-Encoder3-scaler',
+    defaultValue: 1,
+    debounceMs: 100,
+  })
+  const encoder3Offset = useElectronStorage({
+    key: 'preprocess-Encoder3-offset',
+    defaultValue: 0,
+    debounceMs: 100,
+  })
+  const ang1Scaler = useElectronStorage({
+    key: 'preprocess-Ang1-scaler',
+    defaultValue: 1,
+    debounceMs: 100,
+  })
+  const ang1Offset = useElectronStorage({
+    key: 'preprocess-Ang1-offset',
+    defaultValue: 0,
+    debounceMs: 100,
+  })
+  const ang2Scaler = useElectronStorage({
+    key: 'preprocess-Ang2-scaler',
+    defaultValue: 1,
+    debounceMs: 100,
+  })
+  const ang2Offset = useElectronStorage({
+    key: 'preprocess-Ang2-offset',
+    defaultValue: 0,
+    debounceMs: 100,
+  })
+  const ang3Scaler = useElectronStorage({
+    key: 'preprocess-Ang3-scaler',
+    defaultValue: 1,
+    debounceMs: 100,
+  })
+  const ang3Offset = useElectronStorage({
+    key: 'preprocess-Ang3-offset',
+    defaultValue: 0,
+    debounceMs: 100,
+  })
+
+  const parameterStorageHooks = [
+    { scaler: level1Scaler, offset: level1Offset },
+    { scaler: level2Scaler, offset: level2Offset },
+    { scaler: level3Scaler, offset: level3Offset },
+    { scaler: level4Scaler, offset: level4Offset },
+    { scaler: level5Scaler, offset: level5Offset },
+    { scaler: level6Scaler, offset: level6Offset },
+    { scaler: encoder3Scaler, offset: encoder3Offset },
+    { scaler: ang1Scaler, offset: ang1Offset },
+    { scaler: ang2Scaler, offset: ang2Offset },
+    { scaler: ang3Scaler, offset: ang3Offset },
+  ]
 
   const [parameters, setParameters] = useState(() =>
     initialParameters.map((param, index) => ({

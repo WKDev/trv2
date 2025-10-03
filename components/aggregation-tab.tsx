@@ -1,42 +1,48 @@
 "use client"
 
 import { DataChartTable } from "@/components/data-chart-table"
+import { ChartJSLineChart } from "@/components/chart-js-line-chart"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useData } from "@/contexts/data-context"
-import { memo, useState } from "react"
-import { RotateCcw, Undo2, AlertTriangle, ChevronDown, ChevronUp } from "lucide-react"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
+import { memo, useState, useEffect } from "react"
+import { ChevronDown, ChevronUp } from "lucide-react"
+import { SensorType } from "@/components/chart-js-line-chart"
 
 const AggregationTab = memo(() => {
   const { 
+    correctedData,
     aggregatedData, 
     aggregatedSelectedRows, 
     setAggregatedSelectedRows, 
     setAggregatedData,
-    resetToRawData,
-    resetToOriginalData,
-    undoLastModification,
-    hasModifications,
-    hasData, 
-    getDataCsv 
+    hasData
   } = useData()
 
-  // 수정 히스토리 관리를 위한 로컬 상태
-  const [modificationHistory, setModificationHistory] = useState<any[]>([])
-  const [hasModificationsLocal, setHasModificationsLocal] = useState(false)
-
-  const [showConfirmDialog, setShowConfirmDialog] = useState(false)
+  // 센서 컨트롤 상태
+  const [selectedSensorType, setSelectedSensorType] = useState<SensorType>('Level')
+  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(new Set(['Level1', 'Level2', 'Level3', 'Level4', 'Level5', 'Level6']))
   
   // 패널 최소화 상태
   const [isDataInfoCollapsed, setIsDataInfoCollapsed] = useState(true)
+  const [isAggregationPanelCollapsed, setIsAggregationPanelCollapsed] = useState(false)
+  
+  // 집계 설정 상태
+  const [aggregationInterval, setAggregationInterval] = useState<number>(10)
+  const [aggregationMethod, setAggregationMethod] = useState<'median' | 'mean' | 'ema'>('mean')
+  const [emaSpan, setEmaSpan] = useState<number>(5)
+
+  // 보정된 데이터가 변경될 때 자동으로 집계 적용
+  useEffect(() => {
+    if (correctedData && correctedData.length > 0) {
+      const newAggregatedData = aggregateData(correctedData, aggregationInterval, aggregationMethod, aggregationMethod === 'ema' ? emaSpan : undefined)
+      setAggregatedData(newAggregatedData)
+    }
+  }, [correctedData, aggregationInterval, aggregationMethod, emaSpan, setAggregatedData])
 
   const handleRowSelection = (rowIndex: number, checked: boolean) => {
     const newSelectedRows = new Set(aggregatedSelectedRows)
@@ -57,43 +63,135 @@ const AggregationTab = memo(() => {
     }
   }
 
-  const handleReset = () => {
-    // 수정된 데이터를 원본으로 되돌리기 (되돌리기 기능)
-    resetToRawData()
-    setModificationHistory([])
-    setHasModificationsLocal(false)
+  // 센서 타입 변경 핸들러
+  const handleSensorTypeChange = (sensorType: SensorType) => {
+    setSelectedSensorType(sensorType)
+    
+    // 센서 타입에 따라 기본 컬럼 설정
+    const defaultColumns = {
+      Level: ['Level1', 'Level2', 'Level3', 'Level4', 'Level5', 'Level6'],
+      Encoder: ['Encoder3'],
+      Angle: ['Ang1', 'Ang2', 'Ang3'],
+    }
+    
+    setVisibleColumns(new Set(defaultColumns[sensorType]))
   }
 
-  const handleUndo = () => {
-    // 마지막 수정을 되돌리기
-    if (modificationHistory.length > 0) {
-      const lastState = modificationHistory[modificationHistory.length - 1]
-      setAggregatedData([...lastState])
-      setModificationHistory(prev => prev.slice(0, -1))
-      setHasModificationsLocal(modificationHistory.length > 1)
+  // 탭 변경 핸들러 (string을 받아서 SensorType으로 변환)
+  const handleTabChange = (value: string) => {
+    const sensorType = value as SensorType
+    handleSensorTypeChange(sensorType)
+  }
+
+  // 컬럼 토글 핸들러
+  const handleColumnToggle = (column: string, checked: boolean) => {
+    setVisibleColumns(prev => {
+      const newSet = new Set(prev)
+      if (checked) {
+        newSet.add(column)
+      } else {
+        newSet.delete(column)
+      }
+      return newSet
+    })
+  }
+
+  // 집계 로직 함수들
+  const calculateMedian = (values: number[]) => {
+    const sorted = [...values].sort((a, b) => a - b)
+    const mid = Math.floor(sorted.length / 2)
+    return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid]
+  }
+
+  const calculateMean = (values: number[]) => {
+    return values.reduce((sum, val) => sum + val, 0) / values.length
+  }
+
+  const calculateEMA = (values: number[], span: number) => {
+    if (values.length === 0) return 0
+    if (values.length === 1) return values[0]
+    
+    const alpha = 2 / (span + 1)
+    let ema = values[0]
+    
+    for (let i = 1; i < values.length; i++) {
+      ema = alpha * values[i] + (1 - alpha) * ema
+    }
+    
+    return ema
+  }
+
+  const aggregateData = (data: any[], interval: number, method: 'median' | 'mean' | 'ema', emaSpan?: number) => {
+    if (!data || data.length === 0) return []
+    
+    const result = []
+    const numericColumns = ['Level1', 'Level2', 'Level3', 'Level4', 'Level5', 'Level6', 'Encoder3', 'Ang1', 'Ang2', 'Ang3']
+    
+    for (let i = 0; i < data.length; i += interval) {
+      const chunk = data.slice(i, i + interval)
+      if (chunk.length === 0) continue
+      
+      const aggregatedRow: any = {}
+      
+      // 각 컬럼에 대해 집계 수행
+      Object.keys(data[0]).forEach(key => {
+        if (numericColumns.includes(key)) {
+          const values = chunk.map(row => parseFloat(row[key]) || 0)
+          if (values.length > 0) {
+            switch (method) {
+              case 'median':
+                aggregatedRow[key] = calculateMedian(values)
+                break
+              case 'mean':
+                aggregatedRow[key] = calculateMean(values)
+                break
+              case 'ema':
+                aggregatedRow[key] = calculateEMA(values, emaSpan || 5)
+                break
+            }
+          } else {
+            aggregatedRow[key] = 0
+          }
+        } else {
+          // 숫자가 아닌 컬럼은 첫 번째 값 사용
+          aggregatedRow[key] = chunk[0][key]
+        }
+      })
+      
+      result.push(aggregatedRow)
+    }
+    
+    return result
+  }
+
+  // 집계 설정 변경 핸들러
+  const handleAggregationIntervalChange = (value: string) => {
+    const numValue = parseInt(value) || 1
+    setAggregationInterval(numValue)
+    // 보정된 데이터를 기반으로 집계된 데이터 업데이트
+    if (correctedData && correctedData.length > 0) {
+      const newAggregatedData = aggregateData(correctedData, numValue, aggregationMethod, aggregationMethod === 'ema' ? emaSpan : undefined)
+      setAggregatedData(newAggregatedData)
     }
   }
 
-  const handleCompleteReset = () => {
-    // 완전 원본 복원
-    resetToOriginalData()
-    setModificationHistory([])
-    setHasModificationsLocal(false)
-    setShowConfirmDialog(false)
+  const handleAggregationMethodChange = (method: 'median' | 'mean' | 'ema') => {
+    setAggregationMethod(method)
+    // 보정된 데이터를 기반으로 집계된 데이터 업데이트
+    if (correctedData && correctedData.length > 0) {
+      const newAggregatedData = aggregateData(correctedData, aggregationInterval, method, method === 'ema' ? emaSpan : undefined)
+      setAggregatedData(newAggregatedData)
+    }
   }
 
-  const handleDataUpdate = (rowIndex: number, field: string, value: number) => {
-    setAggregatedData((prevData: any[]) => {
-      // 수정 전 상태를 히스토리에 저장
-      setModificationHistory((prev: any[]) => [...prev, [...prevData]])
-      setHasModificationsLocal(true)
-      
-      const newData = [...prevData]
-      if (newData[rowIndex]) {
-        newData[rowIndex] = { ...newData[rowIndex], [field]: value }
-      }
-      return newData
-    })
+  const handleEmaSpanChange = (value: string) => {
+    const numValue = parseInt(value) || 1
+    setEmaSpan(numValue)
+    // EMA 방식인 경우에만 보정된 데이터를 기반으로 집계된 데이터 업데이트
+    if (aggregationMethod === 'ema' && correctedData && correctedData.length > 0) {
+      const newAggregatedData = aggregateData(correctedData, aggregationInterval, 'ema', numValue)
+      setAggregatedData(newAggregatedData)
+    }
   }
 
   // 데이터가 없을 때는 로딩 상태 표시
@@ -129,76 +227,158 @@ const AggregationTab = memo(() => {
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-lg font-semibold">집계 및 이상치 제거</h3>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleUndo}
-              disabled={!hasModificationsLocal}
-            >
-              <Undo2 className="w-4 h-4 mr-1" />
-              되돌리기
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleReset}
-              disabled={!hasModificationsLocal}
-            >
-              <RotateCcw className="w-4 h-4 mr-1" />
-              수정 복원
-            </Button>
-            <Dialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
-              <DialogTrigger asChild>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                >
-                  <AlertTriangle className="w-4 h-4 mr-1" />
-                  완전 복원
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>완전 복원 확인</DialogTitle>
-                  <DialogDescription>
-                    모든 수정사항이 삭제되고 원본 데이터로 완전히 복원됩니다.
-                    이 작업은 되돌릴 수 없습니다. 계속하시겠습니까?
-                  </DialogDescription>
-                </DialogHeader>
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => setShowConfirmDialog(false)}>
-                    취소
-                  </Button>
-                  <Button variant="destructive" onClick={handleCompleteReset}>
-                    완전 복원
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          </div>
+        <div className="space-y-6">
+          <ChartJSLineChart
+            title="차트"
+            data={aggregatedData}
+            selectedRows={aggregatedSelectedRows}
+            onSensorTypeChange={handleSensorTypeChange}
+            onColumnToggle={handleColumnToggle}
+            selectedSensorType={selectedSensorType}
+            visibleColumns={visibleColumns}
+            maxDataPoints={1000}
+          />
+          
+          <Card className="bg-card border-border shadow-sm">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-foreground">집계된 데이터</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <DataChartTable 
+                title="집계된 데이터" 
+                dataType="data" 
+                data={aggregatedData}
+                showCheckboxes={true}
+                onRowSelection={handleRowSelection}
+                onSelectAll={handleSelectAll}
+                selectedRows={aggregatedSelectedRows}
+              />
+            </CardContent>
+          </Card>
         </div>
-        
-        <DataChartTable 
-          title="집계된 데이터" 
-          dataType="data" 
-          data={aggregatedData}
-          showCheckboxes={true}
-          onRowSelection={handleRowSelection}
-          onSelectAll={handleSelectAll}
-          selectedRows={aggregatedSelectedRows}
-          onDataUpdate={handleDataUpdate}
-        />
         
         <div className="text-sm text-muted-foreground">
           <p>• 체크박스로 선택한 데이터는 [연결부 단차] 탭으로 전달됩니다</p>
-          <p>• 데이터 수정 후 초기화 버튼으로 원본 상태로 되돌릴 수 있습니다</p>
+          <p>• 집계 설정을 변경하면 자동으로 데이터가 업데이트됩니다</p>
         </div>
       </div>
       
       <div className="space-y-4">
+        {/* 차트 표시 데이터 선택 패널 */}
+        <div className="bg-muted/50 p-4 rounded-lg">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="font-medium">차트 표시 데이터 선택</h4>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsAggregationPanelCollapsed(!isAggregationPanelCollapsed)}
+              className="h-6 w-6 p-0"
+            >
+              {isAggregationPanelCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+            </Button>
+          </div>
+          {!isAggregationPanelCollapsed && (
+            <Tabs value={selectedSensorType} onValueChange={handleTabChange} className="w-full">
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="Level">Level</TabsTrigger>
+                <TabsTrigger value="Encoder">Encoder</TabsTrigger>
+                <TabsTrigger value="Angle">Angle</TabsTrigger>
+              </TabsList>
+              <TabsContent value={selectedSensorType} className="mt-4">
+                <div className="grid grid-cols-2 gap-2">
+                  {selectedSensorType === 'Level' && ['Level1', 'Level2', 'Level3', 'Level4', 'Level5', 'Level6'].map((column) => (
+                    <div key={column} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`column-${column}`}
+                        checked={visibleColumns.has(column)}
+                        onCheckedChange={(checked) => 
+                          handleColumnToggle(column, checked as boolean)
+                        }
+                      />
+                      <Label htmlFor={`column-${column}`} className="text-sm">
+                        {column}
+                      </Label>
+                    </div>
+                  ))}
+                  {selectedSensorType === 'Encoder' && ['Encoder3'].map((column) => (
+                    <div key={column} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`column-${column}`}
+                        checked={visibleColumns.has(column)}
+                        onCheckedChange={(checked) => 
+                          handleColumnToggle(column, checked as boolean)
+                        }
+                      />
+                      <Label htmlFor={`column-${column}`} className="text-sm">
+                        {column}
+                      </Label>
+                    </div>
+                  ))}
+                  {selectedSensorType === 'Angle' && ['Ang1', 'Ang2', 'Ang3'].map((column) => (
+                    <div key={column} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`column-${column}`}
+                        checked={visibleColumns.has(column)}
+                        onCheckedChange={(checked) => 
+                          handleColumnToggle(column, checked as boolean)
+                        }
+                      />
+                      <Label htmlFor={`column-${column}`} className="text-sm">
+                        {column}
+                      </Label>
+                    </div>
+                  ))}
+                </div>
+              </TabsContent>
+            </Tabs>
+          )}
+        </div>
+
+        {/* 데이터 집계 설정 패널 */}
+        <div className="bg-muted/50 p-4 rounded-lg">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="font-medium">데이터 집계</h4>
+          </div>
+          <div className="space-y-4">
+            <div>
+              <Label className="text-sm">집계 간격</Label>
+              <Input
+                type="number"
+                min="1"
+                value={aggregationInterval}
+                onChange={(e) => handleAggregationIntervalChange(e.target.value)}
+                className="mt-1"
+              />
+            </div>
+            
+            <div>
+              <Label className="text-sm mb-2 block">집계 방식</Label>
+              <Tabs value={aggregationMethod} onValueChange={(value) => handleAggregationMethodChange(value as 'median' | 'mean' | 'ema')} className="w-full">
+                <TabsList className="grid w-full grid-cols-3">
+                  <TabsTrigger value="median">중간값</TabsTrigger>
+                  <TabsTrigger value="mean">평균값</TabsTrigger>
+                  <TabsTrigger value="ema">EMA</TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
+            
+            {aggregationMethod === 'ema' && (
+              <div>
+                <Label className="text-sm">EMA span</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  value={emaSpan}
+                  onChange={(e) => handleEmaSpanChange(e.target.value)}
+                  className="mt-1"
+                />
+              </div>
+            )}
+          </div>
+        </div>
+        
         <div className="bg-muted/50 p-4 rounded-lg">
           <div className="flex items-center justify-between mb-2">
             <h4 className="font-medium">선택된 데이터</h4>
@@ -230,7 +410,9 @@ const AggregationTab = memo(() => {
             <div className="text-sm space-y-1">
               <p>총 행 수: {aggregatedData.length}</p>
               <p>선택된 행: {aggregatedSelectedRows.size}</p>
-              <p>백업 파일: data_prep_aggregated.csv</p>
+              <p>집계 간격: {aggregationInterval}</p>
+              <p>집계 방식: {aggregationMethod === 'median' ? '중간값' : aggregationMethod === 'mean' ? '평균값' : 'EMA'}</p>
+              {aggregationMethod === 'ema' && <p>EMA span: {emaSpan}</p>}
             </div>
           )}
         </div>

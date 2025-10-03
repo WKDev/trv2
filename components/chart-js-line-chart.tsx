@@ -190,7 +190,7 @@ export const ChartJSLineChart = memo(({
   // 차트 옵션
   const options: ChartOptions<'line'> = useMemo(() => {
     // 데이터가 10,000개 이상이면 애니메이션 비활성화
-    const shouldDisableAnimation = optimizedData.length >= 10000
+    const shouldDisableAnimation = optimizedData.length >= 1000
     
     return {
       responsive: true,
@@ -209,7 +209,7 @@ export const ChartJSLineChart = memo(({
       },
       // 성능 최적화: 데이터가 많으면 애니메이션 비활성화
       animation: shouldDisableAnimation ? false : {
-        duration: 1000,
+        duration: 500,
         easing: 'easeInOutQuart'
       },
       elements: {
