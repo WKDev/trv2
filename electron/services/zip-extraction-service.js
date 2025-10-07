@@ -125,15 +125,47 @@ class ZipExtractionService {
     try {
       const foundFiles = [];
       const missingFiles = [];
+      const foundFilePaths = {};
+
+      // 재귀적으로 파일을 찾는 함수
+      const findFileRecursively = async (dirPath, fileName) => {
+        try {
+          const entries = await fs.readdir(dirPath, { withFileTypes: true });
+          
+          for (const entry of entries) {
+            const fullPath = path.join(dirPath, entry.name);
+            
+            if (entry.isDirectory()) {
+              // 하위 디렉토리에서 재귀적으로 찾기
+              const result = await findFileRecursively(fullPath, fileName);
+              if (result) return result;
+            } else if (entry.name === fileName) {
+              return fullPath;
+            }
+          }
+        } catch (error) {
+          // 디렉토리 읽기 실패 시 무시
+        }
+        return null;
+      };
 
       for (const requiredFile of this.requiredFiles) {
-        const filePath = path.join(extractPath, requiredFile);
+        // 먼저 루트에서 찾기
+        const rootFilePath = path.join(extractPath, requiredFile);
         
         try {
-          await fs.access(filePath, fs.constants.F_OK);
+          await fs.access(rootFilePath, fs.constants.F_OK);
           foundFiles.push(requiredFile);
+          foundFilePaths[requiredFile] = rootFilePath;
         } catch (error) {
-          missingFiles.push(requiredFile);
+          // 루트에 없으면 하위 폴더에서 찾기
+          const foundPath = await findFileRecursively(extractPath, requiredFile);
+          if (foundPath) {
+            foundFiles.push(requiredFile);
+            foundFilePaths[requiredFile] = foundPath;
+          } else {
+            missingFiles.push(requiredFile);
+          }
         }
       }
 
@@ -142,6 +174,7 @@ class ZipExtractionService {
           valid: false,
           message: `필수 파일이 누락되었습니다: ${missingFiles.join(', ')}`,
           foundFiles,
+          foundFilePaths,
           missingFiles
         };
       }
@@ -150,6 +183,7 @@ class ZipExtractionService {
         valid: true,
         message: '모든 필수 파일이 존재합니다.',
         foundFiles,
+        foundFilePaths,
         missingFiles: []
       };
     } catch (error) {
@@ -158,6 +192,7 @@ class ZipExtractionService {
         valid: false,
         message: `파일 검증 중 오류가 발생했습니다: ${error.message}`,
         foundFiles: [],
+        foundFilePaths: {},
         missingFiles: this.requiredFiles
       };
     }

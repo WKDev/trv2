@@ -1,5 +1,6 @@
-import { MainLayout } from "@/components/main-layout"
+import { redirect } from 'next/navigation'
 
 export default function Home() {
-  return <MainLayout />
+  // 홈페이지에서 파일 열기 페이지로 리다이렉트
+  redirect('/file')
 }

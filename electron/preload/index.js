@@ -51,19 +51,29 @@ contextBridge.exposeInMainWorld('electronAPI', {
   checkAndAddCorrectionFile: (zipFilePath) => ipcRenderer.invoke('check-and-add-correction-file', zipFilePath),
   readCorrectionFile: (zipFilePath) => ipcRenderer.invoke('read-correction-file', zipFilePath),
   updateCorrectionFile: (zipFilePath, correctionData) => ipcRenderer.invoke('update-correction-file', zipFilePath, correctionData),
-  readCsvFiles: (extractPath) => ipcRenderer.invoke('read-csv-files', extractPath),
+  readCsvFiles: (extractPath, foundFilePaths) => ipcRenderer.invoke('read-csv-files', extractPath, foundFilePaths),
   cleanupTempDirectory: () => ipcRenderer.invoke('cleanup-temp-directory'),
   
   // 최근 파일 관리
   getRecentFiles: () => ipcRenderer.invoke('get-recent-files'),
+  getValidatedRecentFiles: () => ipcRenderer.invoke('get-validated-recent-files'),
+  validateAndCleanRecentFiles: () => ipcRenderer.invoke('validate-and-clean-recent-files'),
+  validateAndCleanRecentFilesWithDialog: () => ipcRenderer.invoke('validate-and-clean-recent-files-with-dialog'),
+  removeFromRecentFiles: (filePath) => ipcRenderer.invoke('remove-from-recent-files', filePath),
   clearRecentFiles: () => ipcRenderer.invoke('clear-recent-files'),
+  showMissingFilesDialog: (missingFiles) => ipcRenderer.invoke('show-missing-files-dialog', missingFiles),
   
   // CSV 파일 저장
   saveCsvFiles: (originalZipPath, csvData) => ipcRenderer.invoke('save-csv-files', originalZipPath, csvData),
   
   // data_raw.csv 관련 API
   restoreFromDataRaw: (extractPath) => ipcRenderer.invoke('restore-from-data-raw', extractPath),
-  createDataRawBackup: (extractPath) => ipcRenderer.invoke('create-data-raw-backup', extractPath)
+  createDataRawBackup: (extractPath) => ipcRenderer.invoke('create-data-raw-backup', extractPath),
+  
+  // options.json 관련 API
+  readOptionsFile: (zipFilePath) => ipcRenderer.invoke('read-options-file', zipFilePath),
+  updateOptionsFile: (zipFilePath, optionsData) => ipcRenderer.invoke('update-options-file', zipFilePath, optionsData),
+  getDefaultOptions: (section) => ipcRenderer.invoke('get-default-options', section)
 });
 
 // 개발 환경에서만 콘솔 로그 활성화

@@ -1,0 +1,74 @@
+{
+  "preprocessing": {
+    "Level1": {
+      "Scaler": 1,
+      "offset": 0
+    },
+    "Level2": {
+      "Scaler": 1,
+      "offset": 0
+    },
+    "Level3": {
+      "Scaler": 1,
+      "offset": 0
+    },
+    "Level4": {
+      "Scaler": 1,
+      "offset": 0
+    },
+    "Level5": {
+      "Scaler": 1,
+      "offset": 0
+    },
+    "Level6": {
+      "Scaler": 1,
+      "offset": 0
+    },
+    "Encoder3": {
+      "Scaler": 1,
+      "offset": 0
+    },
+    "Ang1": {
+      "Scaler": 1,
+      "offset": 0
+    },
+    "Ang2": {
+      "Scaler": 1,
+      "offset": 0
+    },
+    "Ang3": {
+      "Scaler": 1,
+      "offset": 0
+    }
+  },
+  "analysis": {
+    "level_deviation": {
+      "Scaler": 1,
+      "offset": 0
+    },
+    "cross_level": {
+      "Scaler": 1,
+      "offset": 0
+    },
+    "planarity": {
+      "Scaler": 1,
+      "offset": 0
+    },
+    "longitudinal_level_irregularity": {
+      "Scaler": 1,
+      "offset": 0
+    },
+    "guard_rail_clearance": {
+      "Scaler": 1,
+      "offset": 0
+    },
+    "joint_step": {
+      "Scaler": 1,
+      "offset": 0
+    },
+    "straightness_of_alignment": {
+      "Scaler": 1,
+      "offset": 0
+    }
+  }
+}

@@ -293,6 +293,13 @@ interface DataContextType {
     zScoreThreshold: number
   }
   
+  // 집계 설정
+  aggregationSettings: {
+    interval: number
+    method: 'median' | 'mean' | 'ema'
+    emaSpan: number
+  }
+  
   // 데이터 액션
   setProcessedData: (data: ProcessedData | null) => void
   setMetadata: (metadata: Metadata) => void
@@ -334,6 +341,14 @@ interface DataContextType {
   getMetaCsv: () => any[]
   hasData: () => boolean
   getCorrectionValue: (section: 'preprocessing' | 'analysis', key: string, field: 'Scaler' | 'offset') => number
+  
+  // 집계 설정 업데이트
+  updateAggregationSettings: (settings: Partial<{interval: number, method: 'median' | 'mean' | 'ema', emaSpan: number}>) => void
+  
+  // 기본값 복원 함수들
+  resetOutlierSettingsToDefault: () => Promise<void>
+  resetScaleOffsetSettingsToDefault: () => Promise<void>
+  resetAggregationSettingsToDefault: () => Promise<void>
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined)
@@ -378,6 +393,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
     zScoreThreshold: 3.0
   })
   
+  // 집계 설정 상태
+  const [aggregationSettings, setAggregationSettings] = useState({
+    interval: 1.0,
+    method: 'mean' as 'median' | 'mean' | 'ema',
+    emaSpan: 5
+  })
+  
   // 이상치 제거 설정 - 컬럼별 설정
   const [outlierRemovalSettings, setOutlierRemovalSettings] = useState<Record<string, {
     useIQR: boolean
@@ -420,7 +442,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           },
           analysis: {}
         }
-        return {
+        const newData = {
           ...defaultCorrectionData,
           [section]: {
             ...defaultCorrectionData[section],
@@ -430,6 +452,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
             }
           }
         }
+        
+        // options.json 업데이트
+        updateOptionsFile(newData)
+        return newData
       }
       
       const newCorrectionData = {
@@ -442,6 +468,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
           }
         }
       }
+      
+      // options.json 업데이트
+      updateOptionsFile(newCorrectionData)
       
       // 보정값이 변경되면 자동으로 보정 적용 (이상치 처리된 데이터 사용)
       if (section === 'preprocessing' && outlierRemovedData.length > 0) {
@@ -485,8 +514,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const getCorrectionValue = (section: 'preprocessing' | 'analysis', key: string, field: 'Scaler' | 'offset'): number => {
     if (!correctionData || !correctionData[section] || !correctionData[section][key]) {
-      // Level5, Level6에 대한 기본값 반환
-      if (section === 'preprocessing' && (key === 'Level5' || key === 'Level6')) {
+      // 모든 센서에 대한 기본값 반환
+      if (section === 'preprocessing') {
         return field === 'Scaler' ? 1 : 0
       }
       return 0
@@ -615,7 +644,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }
 
 
-  // 데이터가 로드될 때 rawData 초기화
+  // 데이터가 로드될 때 rawData 초기화 및 options.json 로딩
   useEffect(() => {
     if (hasData()) {
       const originalData = getDataCsv()
@@ -637,23 +666,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setHasModifications(false)
       setModificationHistory([])
       
-      // 기본 보정값 초기화 (Level5, Level6 포함)
-      const defaultCorrectionData: CorrectionData = {
-        preprocessing: {
-          Level1: { Scaler: 1, offset: 0 },
-          Level2: { Scaler: 1, offset: 0 },
-          Level3: { Scaler: 1, offset: 0 },
-          Level4: { Scaler: 1, offset: 0 },
-          Level5: { Scaler: 1, offset: 0 },
-          Level6: { Scaler: 1, offset: 0 },
-          Encoder3: { Scaler: 1, offset: 0 },
-          Ang1: { Scaler: 1, offset: 0 },
-          Ang2: { Scaler: 1, offset: 0 },
-          Ang3: { Scaler: 1, offset: 0 },
-        },
-        analysis: {}
-      }
-      setCorrectionData(defaultCorrectionData)
+      // options.json에서 설정값 로딩
+      loadOptionsFromFile()
       
       // 기본적으로 모든 데이터 선택 - setTimeout으로 다음 렌더링 사이클에서 실행
       setTimeout(() => {
@@ -663,6 +677,168 @@ export function DataProvider({ children }: { children: ReactNode }) {
       }, 0)
     }
   }, [processedData?.fileName, processedData?.filePath]) // processedData의 고유 식별자로 변경
+
+  // options.json에서 설정값 로딩
+  const loadOptionsFromFile = async () => {
+    try {
+      if (typeof window !== 'undefined' && window.electronAPI && processedData?.filePath) {
+        const result = await window.electronAPI.readOptionsFile(processedData.filePath)
+        
+        if (result.success && result.data) {
+          const options = result.data
+          
+          // 이상치 처리 설정 로딩
+          if (options.prep?.outlierRemoval) {
+            setOutlierRemovalSettings(options.prep.outlierRemoval)
+          }
+          
+          // Scale & Offset 설정 로딩
+          if (options.prep?.scaleOffset) {
+            const correctionData: CorrectionData = {
+              preprocessing: options.prep.scaleOffset,
+              analysis: {}
+            }
+            setCorrectionData(correctionData)
+          }
+          
+          // 집계 설정 로딩
+          if (options.prep?.aggregation) {
+            setAggregationSettings(options.prep.aggregation)
+          }
+          
+          console.log('options.json에서 설정값을 성공적으로 로딩했습니다.')
+        } else {
+          console.log('options.json 파일이 없거나 읽기 실패, 기본값 사용')
+          // 기본값으로 초기화
+          initializeDefaultSettings()
+        }
+      } else {
+        // 웹 환경이거나 Electron API가 없는 경우 기본값 사용
+        initializeDefaultSettings()
+      }
+    } catch (error) {
+      console.error('options.json 로딩 중 오류:', error)
+      // 오류 발생 시 기본값으로 초기화
+      initializeDefaultSettings()
+    }
+  }
+
+  // 기본 설정값 초기화
+  const initializeDefaultSettings = () => {
+    // 기본 보정값 초기화 (Level5, Level6 포함)
+    const defaultCorrectionData: CorrectionData = {
+      preprocessing: {
+        Level1: { Scaler: 1, offset: 0 },
+        Level2: { Scaler: 1, offset: 0 },
+        Level3: { Scaler: 1, offset: 0 },
+        Level4: { Scaler: 1, offset: 0 },
+        Level5: { Scaler: 1, offset: 0 },
+        Level6: { Scaler: 1, offset: 0 },
+        Encoder3: { Scaler: 1, offset: 0 },
+        Ang1: { Scaler: 1, offset: 0 },
+        Ang2: { Scaler: 1, offset: 0 },
+        Ang3: { Scaler: 1, offset: 0 },
+      },
+      analysis: {}
+    }
+    setCorrectionData(defaultCorrectionData)
+  }
+
+  // options.json 파일 업데이트
+  const updateOptionsFile = async (correctionData?: CorrectionData | null, outlierSettings?: Record<string, any>) => {
+    try {
+      if (typeof window !== 'undefined' && window.electronAPI && processedData?.filePath) {
+        // 현재 설정값들을 가져와서 options.json 구조로 구성
+        const currentCorrectionData = correctionData || correctionData
+        const currentOutlierSettings = outlierSettings || outlierRemovalSettings
+        
+        const optionsData = {
+          prep: {
+            outlierRemoval: currentOutlierSettings,
+            scaleOffset: currentCorrectionData?.preprocessing || {},
+            aggregation: aggregationSettings
+          }
+        }
+        
+        const result = await window.electronAPI.updateOptionsFile(processedData.filePath, optionsData)
+        
+        if (result.success) {
+          console.log('options.json 파일이 성공적으로 업데이트되었습니다.')
+        } else {
+          console.error('options.json 파일 업데이트 실패:', result.message)
+        }
+      }
+    } catch (error) {
+      console.error('options.json 업데이트 중 오류:', error)
+    }
+  }
+
+  // 기본값으로 복원하는 함수들
+  const resetOutlierSettingsToDefault = async () => {
+    try {
+      if (typeof window !== 'undefined' && window.electronAPI) {
+        const result = await window.electronAPI.getDefaultOptions('prep.outlierRemoval')
+        
+        if (result.success && result.data) {
+          setOutlierRemovalSettings(result.data)
+          await updateOptionsFile(null, result.data)
+          console.log('이상치 처리 설정이 기본값으로 복원되었습니다.')
+        }
+      }
+    } catch (error) {
+      console.error('이상치 처리 설정 복원 중 오류:', error)
+    }
+  }
+
+  const resetScaleOffsetSettingsToDefault = async () => {
+    try {
+      if (typeof window !== 'undefined' && window.electronAPI) {
+        const result = await window.electronAPI.getDefaultOptions('prep.scaleOffset')
+        
+        if (result.success && result.data) {
+          const defaultCorrectionData: CorrectionData = {
+            preprocessing: result.data,
+            analysis: {}
+          }
+          setCorrectionData(defaultCorrectionData)
+          await updateOptionsFile(defaultCorrectionData)
+          console.log('Scale & Offset 설정이 기본값으로 복원되었습니다.')
+        }
+      }
+    } catch (error) {
+      console.error('Scale & Offset 설정 복원 중 오류:', error)
+    }
+  }
+
+  const updateAggregationSettings = (settings: Partial<{interval: number, method: 'median' | 'mean' | 'ema', emaSpan: number}>) => {
+    setAggregationSettings(prev => {
+      const newSettings = {
+        ...prev,
+        ...settings
+      }
+      
+      // options.json 업데이트
+      updateOptionsFile()
+      
+      return newSettings
+    })
+  }
+
+  const resetAggregationSettingsToDefault = async () => {
+    try {
+      if (typeof window !== 'undefined' && window.electronAPI) {
+        const result = await window.electronAPI.getDefaultOptions('prep.aggregation')
+        
+        if (result.success && result.data) {
+          setAggregationSettings(result.data)
+          await updateOptionsFile()
+          console.log('집계 설정이 기본값으로 복원되었습니다.')
+        }
+      }
+    } catch (error) {
+      console.error('집계 설정 복원 중 오류:', error)
+    }
+  }
 
   // correctionData가 로드될 때 자동으로 보정 적용 (이상치 처리된 데이터 사용)
   useEffect(() => {
@@ -843,13 +1019,20 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }
 
   const updateOutlierRemovalSettings = (column: string, settings: Partial<{useIQR: boolean, iqrMultiplier: number, useZScore: boolean, zScoreThreshold: number}>) => {
-    setOutlierRemovalSettings(prev => ({
-      ...prev,
-      [column]: {
-        ...prev[column],
-        ...settings
+    setOutlierRemovalSettings(prev => {
+      const newSettings = {
+        ...prev,
+        [column]: {
+          ...prev[column],
+          ...settings
+        }
       }
-    }))
+      
+      // options.json 업데이트
+      updateOptionsFile(null, newSettings)
+      
+      return newSettings
+    })
   }
 
   const applyAggregation = (aggregationType: string, outlierRemoval: boolean) => {
@@ -897,6 +1080,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     applyModeChanged,
     currentApplyMode,
     bulkSettings,
+    aggregationSettings,
     setProcessedData,
     setMetadata,
     setCorrectionData,
@@ -931,6 +1115,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
     getMetaCsv,
     hasData,
     getCorrectionValue,
+    updateAggregationSettings,
+    resetOutlierSettingsToDefault,
+    resetScaleOffsetSettingsToDefault,
+    resetAggregationSettingsToDefault,
   }
 
   return (

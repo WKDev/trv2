@@ -49,12 +49,17 @@ declare global {
       checkAndAddCorrectionFile: (zipFilePath: string) => Promise<{success: boolean, message: string}>
       readCorrectionFile: (zipFilePath: string) => Promise<{success: boolean, data?: any, message: string}>
       updateCorrectionFile: (zipFilePath: string, correctionData: any) => Promise<{success: boolean, message: string}>
-      readCsvFiles: (extractPath: string) => Promise<{success: boolean, data?: any, qualityCheck?: any, message: string}>
+      readCsvFiles: (extractPath: string, foundFilePaths?: any) => Promise<{success: boolean, data?: any, qualityCheck?: any, message: string}>
       cleanupTempDirectory: () => Promise<void>
       
       // 최근 파일 관리
       getRecentFiles: () => Promise<{success: boolean, files?: any[], message: string}>
+      getValidatedRecentFiles: () => Promise<{success: boolean, files?: any[], message: string}>
+      validateAndCleanRecentFiles: () => Promise<{success: boolean, removedFiles?: any[], message: string}>
+      validateAndCleanRecentFilesWithDialog: () => Promise<{success: boolean, files?: any[], message: string}>
+      removeFromRecentFiles: (filePath: string) => Promise<{success: boolean, message: string}>
       clearRecentFiles: () => Promise<{success: boolean, message: string}>
+      showMissingFilesDialog: (missingFiles: any[]) => Promise<{success: boolean, shouldRemove: boolean, message: string}>
       
       // CSV 파일 저장
       saveCsvFiles: (originalZipPath: string, csvData: {meta?: any[], data?: any[], step?: any[]}) => Promise<{success: boolean, message: string, savedFiles?: string[], backupPath?: string}>
@@ -62,6 +67,11 @@ declare global {
       // data_raw.csv 관련 API
       restoreFromDataRaw: (extractPath: string) => Promise<{success: boolean, message: string, restored: boolean}>
       createDataRawBackup: (extractPath: string) => Promise<{success: boolean, message: string, hasBackup: boolean}>
+      
+      // options.json 관련 API
+      readOptionsFile: (zipFilePath: string) => Promise<{success: boolean, data?: any, message: string}>
+      updateOptionsFile: (zipFilePath: string, optionsData: any) => Promise<{success: boolean, message: string}>
+      getDefaultOptions: (section?: string) => Promise<{success: boolean, data?: any, message: string}>
     }
   }
 }

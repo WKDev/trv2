@@ -1,0 +1,120 @@
+{
+  "prep": {
+    "outlierRemoval": {
+      "applyMode": "bulk",
+      "bulkSettings": {
+        "useIQR": true,
+        "iqrMultiplier": 1.5,
+        "useZScore": true,
+        "zScoreThreshold": 3.0
+      },
+      "Level1": {
+        "useIQR": true,
+        "iqrMultiplier": 1.5,
+        "useZScore": true,
+        "zScoreThreshold": 3
+      },
+      "Level2": {
+        "useIQR": true,
+        "iqrMultiplier": 1.5,
+        "useZScore": true,
+        "zScoreThreshold": 3
+      },
+      "Level3": {
+        "useIQR": true,
+        "iqrMultiplier": 1.5,
+        "useZScore": true,
+        "zScoreThreshold": 3
+      },
+      "Level4": {
+        "useIQR": true,
+        "iqrMultiplier": 1.5,
+        "useZScore": true,
+        "zScoreThreshold": 3
+      },
+      "Level5": {
+        "useIQR": true,
+        "iqrMultiplier": 1.5,
+        "useZScore": true,
+        "zScoreThreshold": 3
+      },
+      "Level6": {
+        "useIQR": true,
+        "iqrMultiplier": 1.5,
+        "useZScore": true,
+        "zScoreThreshold": 3
+      },
+      "Encoder3": {
+        "useIQR": true,
+        "iqrMultiplier": 1.5,
+        "useZScore": true,
+        "zScoreThreshold": 3
+      },
+      "Ang1": {
+        "useIQR": true,
+        "iqrMultiplier": 1.5,
+        "useZScore": true,
+        "zScoreThreshold": 3
+      },
+      "Ang2": {
+        "useIQR": true,
+        "iqrMultiplier": 1.5,
+        "useZScore": true,
+        "zScoreThreshold": 3
+      },
+      "Ang3": {
+        "useIQR": true,
+        "iqrMultiplier": 1.5,
+        "useZScore": true,
+        "zScoreThreshold": 3
+      }
+    },
+    "scaleOffset": {
+      "Level1": {
+        "Scaler": 1,
+        "offset": 0
+      },
+      "Level2": {
+        "Scaler": 1,
+        "offset": 0
+      },
+      "Level3": {
+        "Scaler": 1,
+        "offset": 0
+      },
+      "Level4": {
+        "Scaler": 1,
+        "offset": 0
+      },
+      "Level5": {
+        "Scaler": 1,
+        "offset": 0
+      },
+      "Level6": {
+        "Scaler": 1,
+        "offset": 0
+      },
+      "Encoder3": {
+        "Scaler": 1,
+        "offset": 0
+      },
+      "Ang1": {
+        "Scaler": 1,
+        "offset": 0
+      },
+      "Ang2": {
+        "Scaler": 1,
+        "offset": 0
+      },
+      "Ang3": {
+        "Scaler": 1,
+        "offset": 0
+      }
+    },
+    "aggregation": {
+      "interval": 1,
+      "method": "mean",
+      "emaSpan": 5
+    }
+  }
+}

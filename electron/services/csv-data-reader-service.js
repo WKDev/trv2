@@ -34,9 +34,10 @@ class CsvDataReaderService {
   /**
    * 모든 필수 CSV 파일들을 읽어서 통합 데이터 객체 생성
    * @param {string} extractPath 압축 해제된 디렉토리 경로
+   * @param {Object} foundFilePaths 찾은 파일들의 실제 경로 (선택사항)
    * @returns {Promise<Object>} 통합된 데이터 객체
    */
-  async readAllCsvFiles(extractPath) {
+  async readAllCsvFiles(extractPath, foundFilePaths = null) {
     try {
       const data = {
         data: null,
@@ -54,7 +55,14 @@ class CsvDataReaderService {
 
       // 각 CSV 파일 읽기
       for (const fileName of this.requiredFiles) {
-        const filePath = path.join(extractPath, fileName);
+        let filePath;
+        
+        // foundFilePaths가 제공되면 실제 경로 사용, 아니면 기본 경로 사용
+        if (foundFilePaths && foundFilePaths[fileName]) {
+          filePath = foundFilePaths[fileName];
+        } else {
+          filePath = path.join(extractPath, fileName);
+        }
         
         try {
           const csvData = await this.parseCsvFile(filePath);

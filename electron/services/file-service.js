@@ -1,4 +1,4 @@
-const { dialog } = require('electron');
+const { dialog, app } = require('electron');
 const path = require('path');
 const fs = require('fs').promises;
 const yauzl = require('yauzl');
@@ -13,6 +13,8 @@ class FileService {
   constructor() {
     this.recentFiles = [];
     this.tempDir = null;
+    this.recentFilesPath = path.join(app.getPath('userData'), 'recent-files.json');
+    this.loadRecentFiles();
   }
 
   /**
@@ -38,7 +40,7 @@ class FileService {
       const fileName = path.basename(filePath);
       
       // 최근 파일 목록에 추가
-      this.addToRecentFiles(fileName, filePath);
+      await this.addToRecentFiles(fileName, filePath);
       
       return {
         success: true,
@@ -56,11 +58,38 @@ class FileService {
   }
 
   /**
+   * 최근 파일 목록을 파일에서 로드
+   */
+  async loadRecentFiles() {
+    try {
+      const data = await fs.readFile(this.recentFilesPath, 'utf8');
+      this.recentFiles = JSON.parse(data);
+      console.log('최근 파일 목록을 로드했습니다:', this.recentFiles.length, '개 파일');
+    } catch (error) {
+      // 파일이 없거나 읽기 실패 시 빈 배열로 초기화
+      this.recentFiles = [];
+      console.log('최근 파일 목록을 로드할 수 없어 빈 목록으로 초기화합니다.');
+    }
+  }
+
+  /**
+   * 최근 파일 목록을 파일에 저장
+   */
+  async saveRecentFiles() {
+    try {
+      await fs.writeFile(this.recentFilesPath, JSON.stringify(this.recentFiles, null, 2));
+      console.log('최근 파일 목록을 저장했습니다.');
+    } catch (error) {
+      console.error('최근 파일 목록 저장 중 오류:', error);
+    }
+  }
+
+  /**
    * 최근 파일 목록에 파일 추가
    * @param {string} fileName 파일명
    * @param {string} filePath 파일 경로
    */
-  addToRecentFiles(fileName, filePath) {
+  async addToRecentFiles(fileName, filePath) {
     const fileInfo = {
       name: fileName,
       path: filePath,
@@ -78,6 +107,9 @@ class FileService {
     if (this.recentFiles.length > 10) {
       this.recentFiles = this.recentFiles.slice(0, 10);
     }
+
+    // 파일에 저장
+    await this.saveRecentFiles();
   }
 
   /**
@@ -92,15 +124,90 @@ class FileService {
    * 최근 파일 목록에서 파일 제거
    * @param {string} filePath 파일 경로
    */
-  removeFromRecentFiles(filePath) {
+  async removeFromRecentFiles(filePath) {
     this.recentFiles = this.recentFiles.filter(file => file.path !== filePath);
+    await this.saveRecentFiles();
   }
 
   /**
    * 최근 파일 목록 초기화
    */
-  clearRecentFiles() {
+  async clearRecentFiles() {
     this.recentFiles = [];
+    await this.saveRecentFiles();
+  }
+
+  /**
+   * 파일 존재 여부 검증
+   * @param {string} filePath 파일 경로
+   * @returns {Promise<boolean>} 파일이 존재하면 true
+   */
+  async validateFileExists(filePath) {
+    try {
+      await fs.access(filePath, fs.constants.F_OK);
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
+   * 최근 파일 목록에서 존재하지 않는 파일들을 제거
+   * @returns {Promise<Array>} 제거된 파일 목록
+   */
+  async validateAndCleanRecentFiles() {
+    const removedFiles = [];
+    const validFiles = [];
+
+    for (const file of this.recentFiles) {
+      const exists = await this.validateFileExists(file.path);
+      if (exists) {
+        validFiles.push(file);
+      } else {
+        removedFiles.push(file);
+      }
+    }
+
+    if (removedFiles.length > 0) {
+      this.recentFiles = validFiles;
+      await this.saveRecentFiles();
+      console.log('존재하지 않는 파일들을 최근 목록에서 제거했습니다:', removedFiles.length, '개');
+    }
+
+    return removedFiles;
+  }
+
+  /**
+   * 최근 파일 목록을 검증하고 정리된 목록 반환
+   * @returns {Promise<Array>} 검증된 최근 파일 목록
+   */
+  async getValidatedRecentFiles() {
+    await this.validateAndCleanRecentFiles();
+    return this.recentFiles;
+  }
+
+  /**
+   * 최근 파일 목록을 검증하고 사용자에게 확인을 받아 제거
+   * @param {Function} showDialog - dialog를 표시하는 함수
+   * @returns {Promise<Array>} 검증된 최근 파일 목록
+   */
+  async validateAndCleanRecentFilesWithDialog(showDialog) {
+    const removedFiles = await this.validateAndCleanRecentFiles();
+    
+    if (removedFiles.length > 0) {
+      const dialogResult = await showDialog(removedFiles);
+      if (dialogResult.success && dialogResult.shouldRemove) {
+        // 이미 제거되었으므로 추가 작업 불필요
+        console.log('사용자 확인으로 존재하지 않는 파일들이 제거되었습니다.');
+      } else if (dialogResult.success && !dialogResult.shouldRemove) {
+        // 사용자가 유지를 선택했으므로 다시 추가
+        this.recentFiles = [...this.recentFiles, ...removedFiles];
+        await this.saveRecentFiles();
+        console.log('사용자 선택으로 파일들이 목록에 유지되었습니다.');
+      }
+    }
+    
+    return this.recentFiles;
   }
 
   /**

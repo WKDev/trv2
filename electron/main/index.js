@@ -64,8 +64,18 @@ function createWindow() {
 }
 
 // 앱이 준비되면 윈도우 생성
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   createWindow();
+
+  // 앱 시작 시 최근 파일 목록 검증 (백그라운드에서 실행)
+  setTimeout(async () => {
+    try {
+      await fileService.validateAndCleanRecentFiles();
+      console.log('앱 시작 시 최근 파일 목록 검증 완료');
+    } catch (error) {
+      console.error('앱 시작 시 최근 파일 목록 검증 중 오류:', error);
+    }
+  }, 2000); // 2초 후 실행하여 앱이 완전히 로드된 후 실행
 
   // macOS에서 독립적으로 동작하도록 설정
   app.on('activate', () => {
@@ -263,6 +273,7 @@ const ZipExtractionService = require('../services/zip-extraction-service');
 const DataCorrectionService = require('../services/data-correction-service');
 const CsvDataReaderService = require('../services/csv-data-reader-service');
 const CsvDataWriterService = require('../services/csv-data-writer-service');
+const OptionsService = require('../services/options-service');
 
 // 서비스 인스턴스 생성
 const fileService = new FileService();
@@ -271,6 +282,7 @@ const zipExtractionService = new ZipExtractionService();
 const dataCorrectionService = new DataCorrectionService();
 const csvDataReaderService = new CsvDataReaderService();
 const csvDataWriterService = new CsvDataWriterService();
+const optionsService = new OptionsService();
 
 // ZIP 파일 선택 및 처리
 ipcMain.handle('select-zip-file', async () => {
@@ -366,6 +378,17 @@ ipcMain.handle('extract-zip-file', async (event, zipFilePath) => {
       console.log('data_correction.json 자동 생성 결과:', addCorrectionResult.message);
     }
 
+    // options.json 파일이 없으면 자동으로 생성하여 ZIP에 추가
+    const optionsCheck = await optionsService.checkOptionsFile(zipFilePath);
+    let optionsAdded = false;
+    
+    if (!optionsCheck.hasFile) {
+      console.log('options.json 파일이 없어서 자동으로 생성합니다.');
+      const addOptionsResult = await optionsService.updateZipWithOptions(zipFilePath, null);
+      optionsAdded = addOptionsResult.success;
+      console.log('options.json 자동 생성 결과:', addOptionsResult.message);
+    }
+
     // data_raw.csv가 없으면 data.csv를 복사하여 ZIP에 추가
     let dataRawAdded = false;
     
@@ -386,7 +409,9 @@ ipcMain.handle('extract-zip-file', async (event, zipFilePath) => {
       extractedFiles: extractResult.extractedFiles,
       backupCreated: backupResult.hasBackup,
       correctionAdded,
-      dataRawAdded
+      optionsAdded,
+      dataRawAdded,
+      foundFilePaths: validationResult.foundFilePaths || {}
     };
   } catch (error) {
     console.error('ZIP 파일 압축 해제 중 오류:', error);
@@ -459,10 +484,65 @@ ipcMain.handle('update-correction-file', async (event, zipFilePath, correctionDa
   }
 });
 
-// CSV 파일들 읽기
-ipcMain.handle('read-csv-files', async (event, extractPath) => {
+// options.json 파일 읽기
+ipcMain.handle('read-options-file', async (event, zipFilePath) => {
   try {
-    const readResult = await csvDataReaderService.readAllCsvFiles(extractPath);
+    const readResult = await optionsService.readOptionsFile(zipFilePath);
+    return readResult;
+  } catch (error) {
+    console.error('options.json 파일 읽기 중 오류:', error);
+    return {
+      success: false,
+      message: `options.json 파일 읽기 중 오류가 발생했습니다: ${error.message}`,
+      data: null
+    };
+  }
+});
+
+// options.json 파일 업데이트
+ipcMain.handle('update-options-file', async (event, zipFilePath, optionsData) => {
+  try {
+    const updateResult = await optionsService.updateZipWithOptions(zipFilePath, optionsData);
+    return updateResult;
+  } catch (error) {
+    console.error('options.json 파일 업데이트 중 오류:', error);
+    return {
+      success: false,
+      message: `options.json 파일 업데이트 중 오류가 발생했습니다: ${error.message}`
+    };
+  }
+});
+
+// 기본 옵션 데이터 가져오기
+ipcMain.handle('get-default-options', async (event, section = null) => {
+  try {
+    if (section) {
+      const defaultSection = optionsService.getDefaultSection(section);
+      return {
+        success: true,
+        data: defaultSection
+      };
+    } else {
+      const defaultOptions = optionsService.getDefaultOptions();
+      return {
+        success: true,
+        data: defaultOptions
+      };
+    }
+  } catch (error) {
+    console.error('기본 옵션 데이터 가져오기 중 오류:', error);
+    return {
+      success: false,
+      message: `기본 옵션 데이터 가져오기 중 오류가 발생했습니다: ${error.message}`,
+      data: null
+    };
+  }
+});
+
+// CSV 파일들 읽기
+ipcMain.handle('read-csv-files', async (event, extractPath, foundFilePaths = null) => {
+  try {
+    const readResult = await csvDataReaderService.readAllCsvFiles(extractPath, foundFilePaths);
     
     if (!readResult.success) {
       return readResult;
@@ -522,9 +602,82 @@ ipcMain.handle('get-recent-files', async () => {
   }
 });
 
+ipcMain.handle('get-validated-recent-files', async () => {
+  try {
+    const files = await fileService.getValidatedRecentFiles();
+    return {
+      success: true,
+      files
+    };
+  } catch (error) {
+    console.error('검증된 최근 파일 목록 가져오기 중 오류:', error);
+    return {
+      success: false,
+      files: [],
+      message: `검증된 최근 파일 목록을 가져올 수 없습니다: ${error.message}`
+    };
+  }
+});
+
+ipcMain.handle('validate-and-clean-recent-files', async () => {
+  try {
+    const removedFiles = await fileService.validateAndCleanRecentFiles();
+    return {
+      success: true,
+      removedFiles,
+      message: removedFiles.length > 0 
+        ? `${removedFiles.length}개의 존재하지 않는 파일이 목록에서 제거되었습니다.`
+        : '모든 최근 파일이 유효합니다.'
+    };
+  } catch (error) {
+    console.error('최근 파일 목록 검증 및 정리 중 오류:', error);
+    return {
+      success: false,
+      removedFiles: [],
+      message: `최근 파일 목록 검증 중 오류가 발생했습니다: ${error.message}`
+    };
+  }
+});
+
+ipcMain.handle('validate-and-clean-recent-files-with-dialog', async () => {
+  try {
+    const files = await fileService.validateAndCleanRecentFilesWithDialog(async (missingFiles) => {
+      return await ipcMain.invoke('show-missing-files-dialog', missingFiles);
+    });
+    return {
+      success: true,
+      files,
+      message: '최근 파일 목록이 검증되었습니다.'
+    };
+  } catch (error) {
+    console.error('최근 파일 목록 검증 및 정리 중 오류:', error);
+    return {
+      success: false,
+      files: [],
+      message: `최근 파일 목록 검증 중 오류가 발생했습니다: ${error.message}`
+    };
+  }
+});
+
+ipcMain.handle('remove-from-recent-files', async (event, filePath) => {
+  try {
+    await fileService.removeFromRecentFiles(filePath);
+    return {
+      success: true,
+      message: '파일이 최근 목록에서 제거되었습니다.'
+    };
+  } catch (error) {
+    console.error('최근 파일 목록에서 파일 제거 중 오류:', error);
+    return {
+      success: false,
+      message: `파일 제거 중 오류가 발생했습니다: ${error.message}`
+    };
+  }
+});
+
 ipcMain.handle('clear-recent-files', async () => {
   try {
-    fileService.clearRecentFiles();
+    await fileService.clearRecentFiles();
     return {
       success: true,
       message: '최근 파일 목록이 초기화되었습니다.'
@@ -534,6 +687,46 @@ ipcMain.handle('clear-recent-files', async () => {
     return {
       success: false,
       message: `최근 파일 목록 초기화 중 오류가 발생했습니다: ${error.message}`
+    };
+  }
+});
+
+// 최근 파일 목록에서 존재하지 않는 파일들을 사용자에게 확인하고 제거
+ipcMain.handle('show-missing-files-dialog', async (event, missingFiles) => {
+  try {
+    if (missingFiles.length === 0) {
+      return {
+        success: true,
+        shouldRemove: false,
+        message: '모든 최근 파일이 유효합니다.'
+      };
+    }
+
+    const fileNames = missingFiles.map(file => file.name).join('\n');
+    const result = await dialog.showMessageBox(mainWindow, {
+      type: 'question',
+      buttons: ['제거', '유지'],
+      defaultId: 0,
+      cancelId: 1,
+      title: '존재하지 않는 파일 발견',
+      message: '다음 파일들이 더 이상 존재하지 않습니다:',
+      detail: `${fileNames}\n\n이 파일들을 최근 목록에서 제거하시겠습니까?`,
+      noLink: true
+    });
+
+    return {
+      success: true,
+      shouldRemove: result.response === 0,
+      message: result.response === 0 
+        ? '존재하지 않는 파일들이 목록에서 제거되었습니다.'
+        : '파일들이 목록에 유지되었습니다.'
+    };
+  } catch (error) {
+    console.error('누락된 파일 dialog 표시 중 오류:', error);
+    return {
+      success: false,
+      shouldRemove: false,
+      message: `Dialog 표시 중 오류가 발생했습니다: ${error.message}`
     };
   }
 });

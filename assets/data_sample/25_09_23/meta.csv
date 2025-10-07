@@ -1,0 +1,2 @@
+time,testername,line,recording_type,recording_interval,wheel_diameter,enc_ppr,device_type,level_sensor,encoder_sensor
+1758588343,2509230945_data(0+000.00m),0,meter,0.1,150,1250,measurer,LAT52-200,WPI-M-1250-L

@@ -21,6 +21,7 @@ class ZipValidationService {
       
       return new Promise((resolve, reject) => {
         const foundFiles = new Set();
+        const foundFilePaths = new Map(); // 실제 경로 저장
         let entryCount = 0;
         let hasError = false;
 
@@ -28,9 +29,16 @@ class ZipValidationService {
           entryCount++;
           const fileName = entry.fileName;
           
-          // CSV 파일 확인
-          if (this.requiredFiles.includes(fileName)) {
-            foundFiles.add(fileName);
+          // 디렉토리가 아닌 파일만 확인
+          if (!fileName.endsWith('/')) {
+            // 파일명만 추출 (경로 제거)
+            const baseFileName = fileName.split('/').pop();
+            
+            // CSV 파일 확인 (루트 또는 하위 폴더에 있는 파일 모두 확인)
+            if (this.requiredFiles.includes(baseFileName)) {
+              foundFiles.add(baseFileName);
+              foundFilePaths.set(baseFileName, fileName);
+            }
           }
           
           // 다음 엔트리 읽기
@@ -45,6 +53,7 @@ class ZipValidationService {
               valid: false,
               message: 'ZIP 파일을 읽는 중 오류가 발생했습니다.',
               foundFiles: Array.from(foundFiles),
+              foundFilePaths: Object.fromEntries(foundFilePaths),
               missingFiles: this.requiredFiles.filter(file => !foundFiles.has(file))
             });
             return;
@@ -58,6 +67,7 @@ class ZipValidationService {
               valid: false,
               message: `필수 파일이 누락되었습니다: ${missingFiles.join(', ')}`,
               foundFiles: Array.from(foundFiles),
+              foundFilePaths: Object.fromEntries(foundFilePaths),
               missingFiles
             });
           } else {
@@ -65,6 +75,7 @@ class ZipValidationService {
               valid: true,
               message: 'ZIP 파일 구조가 유효합니다.',
               foundFiles: Array.from(foundFiles),
+              foundFilePaths: Object.fromEntries(foundFilePaths),
               missingFiles: []
             });
           }
@@ -85,6 +96,7 @@ class ZipValidationService {
         valid: false,
         message: `ZIP 파일 검증 중 오류가 발생했습니다: ${error.message}`,
         foundFiles: [],
+        foundFilePaths: {},
         missingFiles: this.requiredFiles
       };
     }
