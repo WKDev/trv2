@@ -12,11 +12,13 @@ import { DataStatistics } from "@/components/shared/data-statistics"
 import { useData } from "@/contexts/data-context"
 import { memo, useState } from "react"
 import { SensorType } from "@/components/shared/Chart"
+import { useDebounce } from "@/lib/debounce"
 
 const DataCorrectionTab = memo(() => {
   const { 
     rawData,
     outlierRemovedData,
+    aggregatedData,
     correctedData, 
     correctedSelectedRows, 
     setCorrectedSelectedRows, 
@@ -26,6 +28,27 @@ const DataCorrectionTab = memo(() => {
     updateCorrectionData,
     getCorrectionValue
   } = useData()
+
+  // 디버깅을 위한 로그
+  console.log('🔍 DataCorrectionTab 렌더링:', {
+    hasData: hasData(),
+    correctedDataLength: correctedData.length,
+    aggregatedDataLength: aggregatedData.length,
+    hasCorrectionData: !!correctionData,
+    correctionDataKeys: correctionData ? Object.keys(correctionData.preprocessing || {}) : [],
+    correctedDataSample: correctedData.slice(0, 2),
+    aggregatedDataSample: aggregatedData.slice(0, 2)
+  })
+
+  // Scale & Offset 탭에서 aggregatedData 상세 출력
+  console.log('📊 Scale & Offset 탭 - aggregatedData 상세 정보:', {
+    length: aggregatedData.length,
+    isEmpty: aggregatedData.length === 0,
+    fullData: aggregatedData,
+    firstRow: aggregatedData[0],
+    lastRow: aggregatedData[aggregatedData.length - 1],
+    columns: aggregatedData.length > 0 ? Object.keys(aggregatedData[0]) : []
+  })
 
   
   // 패널 최소화 상태 (Accordion으로 대체되어 제거됨)
@@ -56,20 +79,24 @@ const DataCorrectionTab = memo(() => {
 
   // 센서 타입과 컬럼 관련 핸들러는 이제 PreprocessingLayout에서 관리됨
 
+  // 디바운싱된 보정값 변경 핸들러 (50ms 지연)
+  const debouncedUpdateCorrectionData = useDebounce(updateCorrectionData, 50);
+
   // 보정값 변경 핸들러
   const handleCorrectionChange = (key: string, field: 'Scaler' | 'offset', value: string) => {
     const numValue = parseFloat(value) || 0
-    updateCorrectionData('preprocessing', key, field, numValue)
+    console.log(`🔧 DataCorrectionTab에서 보정값 변경 (디바운싱): ${key}.${field} = ${numValue}`)
+    debouncedUpdateCorrectionData('preprocessing', key, field, numValue)
     // DataContext의 updateCorrectionData에서 자동으로 보정 데이터 업데이트 및 집계 탭으로 전달됨
   }
 
   // 데이터가 없을 때는 로딩 상태 표시
-  if (!hasData() || !outlierRemovedData || outlierRemovedData.length === 0) {
+  if (!hasData() || !correctedData || correctedData.length === 0) {
     return (
       <div className="flex items-center justify-center py-12 text-muted-foreground">
         <div className="text-center">
           <p>보정할 데이터가 없습니다</p>
-          <p className="text-sm mt-2">이상치 처리 탭에서 데이터를 처리하면 자동으로 전달됩니다</p>
+          <p className="text-sm mt-2">집계 탭에서 데이터를 처리하면 자동으로 전달됩니다</p>
         </div>
       </div>
     )
@@ -143,8 +170,8 @@ const DataCorrectionTab = memo(() => {
         </div>
         
         <div className="text-sm text-muted-foreground">
-          <p>• 이상치 제거된 데이터에 Scale & Offset 보정을 적용합니다</p>
-          <p>• 보정값 변경 시 자동으로 집계 탭으로 전달됩니다</p>
+          <p>• 집계된 데이터에 Scale & Offset 보정을 적용합니다</p>
+          <p>• 보정값 변경 시 자동으로 데이터가 업데이트됩니다</p>
           <p>• 각 셀 데이터를 편집하거나 행을 삭제할 수 없습니다 (읽기 전용)</p>
         </div>
         

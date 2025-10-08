@@ -73,6 +73,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // options.json 관련 API
   readOptionsFile: (zipFilePath) => ipcRenderer.invoke('read-options-file', zipFilePath),
   updateOptionsFile: (zipFilePath, optionsData) => ipcRenderer.invoke('update-options-file', zipFilePath, optionsData),
+  quickUpdateOptionsFile: (zipFilePath, optionsData) => ipcRenderer.invoke('quick-update-options-file', zipFilePath, optionsData),
   getDefaultOptions: (section) => ipcRenderer.invoke('get-default-options', section)
 });
 

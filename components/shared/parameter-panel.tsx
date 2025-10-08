@@ -26,109 +26,87 @@ const ParameterPanel = memo(({ parameters: initialParameters }: ParameterPanelPr
   const { updateCorrectionData, correctionData, processedData } = useData()
   const { toast } = useToast()
   
-  // debounce를 위한 ref
-  const debounceRefs = useRef<{ [key: string]: NodeJS.Timeout }>({})
   
   // Create individual storage hooks for each parameter
   const level1Scaler = useElectronStorage({
     key: 'preprocess-Level1-scaler',
     defaultValue: 1,
-    debounceMs: 100,
   })
   const level1Offset = useElectronStorage({
     key: 'preprocess-Level1-offset',
     defaultValue: 0,
-    debounceMs: 100,
   })
   const level2Scaler = useElectronStorage({
     key: 'preprocess-Level2-scaler',
     defaultValue: 1,
-    debounceMs: 100,
   })
   const level2Offset = useElectronStorage({
     key: 'preprocess-Level2-offset',
     defaultValue: 0,
-    debounceMs: 100,
   })
   const level3Scaler = useElectronStorage({
     key: 'preprocess-Level3-scaler',
     defaultValue: 1,
-    debounceMs: 100,
   })
   const level3Offset = useElectronStorage({
     key: 'preprocess-Level3-offset',
     defaultValue: 0,
-    debounceMs: 100,
   })
   const level4Scaler = useElectronStorage({
     key: 'preprocess-Level4-scaler',
     defaultValue: 1,
-    debounceMs: 100,
   })
   const level4Offset = useElectronStorage({
     key: 'preprocess-Level4-offset',
     defaultValue: 0,
-    debounceMs: 100,
   })
   const level5Scaler = useElectronStorage({
     key: 'preprocess-Level5-scaler',
     defaultValue: 1,
-    debounceMs: 100,
   })
   const level5Offset = useElectronStorage({
     key: 'preprocess-Level5-offset',
     defaultValue: 0,
-    debounceMs: 100,
   })
   const level6Scaler = useElectronStorage({
     key: 'preprocess-Level6-scaler',
     defaultValue: 1,
-    debounceMs: 100,
   })
   const level6Offset = useElectronStorage({
     key: 'preprocess-Level6-offset',
     defaultValue: 0,
-    debounceMs: 100,
   })
   const encoder3Scaler = useElectronStorage({
     key: 'preprocess-Encoder3-scaler',
     defaultValue: 1,
-    debounceMs: 100,
   })
   const encoder3Offset = useElectronStorage({
     key: 'preprocess-Encoder3-offset',
     defaultValue: 0,
-    debounceMs: 100,
   })
   const ang1Scaler = useElectronStorage({
     key: 'preprocess-Ang1-scaler',
     defaultValue: 1,
-    debounceMs: 100,
   })
   const ang1Offset = useElectronStorage({
     key: 'preprocess-Ang1-offset',
     defaultValue: 0,
-    debounceMs: 100,
   })
   const ang2Scaler = useElectronStorage({
     key: 'preprocess-Ang2-scaler',
     defaultValue: 1,
-    debounceMs: 100,
   })
   const ang2Offset = useElectronStorage({
     key: 'preprocess-Ang2-offset',
     defaultValue: 0,
-    debounceMs: 100,
   })
   const ang3Scaler = useElectronStorage({
     key: 'preprocess-Ang3-scaler',
     defaultValue: 1,
-    debounceMs: 100,
   })
   const ang3Offset = useElectronStorage({
     key: 'preprocess-Ang3-offset',
     defaultValue: 0,
-    debounceMs: 100,
   })
 
   const parameterStorageHooks = [
@@ -153,20 +131,10 @@ const ParameterPanel = memo(({ parameters: initialParameters }: ParameterPanelPr
   )
 
 
-  // debounce된 context 업데이트 함수
-  const debouncedUpdateCorrectionData = useCallback((section: 'preprocessing' | 'analysis', key: string, field: 'Scaler' | 'offset', value: number) => {
-    const debounceKey = `${section}-${key}-${field}`
-    
-    // 기존 타이머가 있으면 취소
-    if (debounceRefs.current[debounceKey]) {
-      clearTimeout(debounceRefs.current[debounceKey])
-    }
-    
-    // 새로운 타이머 설정 (500ms 후에 context 업데이트)
-    debounceRefs.current[debounceKey] = setTimeout(() => {
-      updateCorrectionData(section, key, field, value)
-      delete debounceRefs.current[debounceKey]
-    }, 500)
+  // 즉시 context 업데이트 함수 (디바운싱 제거)
+  const immediateUpdateCorrectionData = useCallback((section: 'preprocessing' | 'analysis', key: string, field: 'Scaler' | 'offset', value: number) => {
+    console.log(`🔧 ParameterPanel에서 보정값 변경 (즉시): ${key}.${field} = ${value}`)
+    updateCorrectionData(section, key, field, value)
   }, [updateCorrectionData])
 
   const handleChange = (index: number, field: "scaler" | "offset", value: string) => {
@@ -176,13 +144,13 @@ const ParameterPanel = memo(({ parameters: initialParameters }: ParameterPanelPr
       const [, setter] = parameterStorageHooks[index][field]
       setter(numValue)
       
-      // debounce된 context 업데이트
+      // 즉시 context 업데이트
       const param = parameters[index]
       const correctionKey = param.name === "Angle1" ? "Ang1" : 
                            param.name === "Angle2" ? "Ang2" : 
                            param.name === "Angle3" ? "Ang3" : param.name
       
-      debouncedUpdateCorrectionData('preprocessing', correctionKey, field === 'scaler' ? 'Scaler' : 'offset', numValue)
+      immediateUpdateCorrectionData('preprocessing', correctionKey, field === 'scaler' ? 'Scaler' : 'offset', numValue)
     }
   }
 

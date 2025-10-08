@@ -2,14 +2,13 @@
 
 import { AnalysisModule } from './analysis-module';
 
-export function AlignmentPage() {
+export function StepPage() {
   return (
     <div className="space-y-6">
       <AnalysisModule 
-        title="정렬도" 
-        moduleId="alignment"
+        title="이음새 단차" 
+        moduleId="step"
         hasRefLevel={true}
-        hasVehicleParams={true}
       />
     </div>
   );

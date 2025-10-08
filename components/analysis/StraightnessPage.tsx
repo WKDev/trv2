@@ -2,12 +2,12 @@
 
 import { AnalysisModule } from './analysis-module';
 
-export function AlignmentPage() {
+export function StraightnessPage() {
   return (
     <div className="space-y-6">
       <AnalysisModule 
-        title="정렬도" 
-        moduleId="alignment"
+        title="평활도" 
+        moduleId="straightness"
         hasRefLevel={true}
         hasVehicleParams={true}
       />

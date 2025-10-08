@@ -50,18 +50,39 @@ export const SharedChartSection = memo(({
 
   // 현재 탭에 따른 데이터 선택
   const currentData = useMemo(() => {
+    console.log(`📊 차트 데이터 업데이트: ${currentTab}`, {
+      rawDataLength: rawData.length,
+      outlierRemovedDataLength: outlierRemovedData.length,
+      correctedDataLength: correctedData.length,
+      aggregatedDataLength: aggregatedData.length,
+      timestamp: new Date().toISOString()
+    })
+    
+    let selectedData
     switch(currentTab) {
       case 'raw-analysis':
-        return rawData
+        selectedData = rawData
+        break
       case 'outlier-replacement':
-        return outlierRemovedData
+        selectedData = outlierRemovedData
+        break
       case 'scale-offset':
-        return correctedData
+        selectedData = correctedData
+        break
       case 'aggregation':
-        return aggregatedData
+        selectedData = aggregatedData
+        break
       default:
-        return rawData
+        selectedData = rawData
     }
+    
+    console.log(`📊 선택된 데이터 (${currentTab}):`, {
+      length: selectedData.length,
+      sample: selectedData.slice(0, 3),
+      hasData: selectedData.length > 0
+    })
+    
+    return selectedData
   }, [currentTab, rawData, outlierRemovedData, correctedData, aggregatedData])
 
   // 차트 제목 설정
@@ -76,7 +97,7 @@ export const SharedChartSection = memo(({
       case 'aggregation':
         return '집계 데이터 차트'
       default:
-        return '데이터 차트'
+        return '분석 데이터 차트'
     }
   }, [currentTab])
 

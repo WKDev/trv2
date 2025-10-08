@@ -19,10 +19,10 @@ let mainWindow;
 function createWindow() {
   // 메인 윈도우 생성
   mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
-    minWidth: 800,
-    minHeight: 600,
+    width: 1600,
+    height: 1000,
+    minWidth: 1600,
+    minHeight: 1000,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -509,6 +509,20 @@ ipcMain.handle('update-options-file', async (event, zipFilePath, optionsData) =>
     return {
       success: false,
       message: `options.json 파일 업데이트 중 오류가 발생했습니다: ${error.message}`
+    };
+  }
+});
+
+// options.json 파일 빠른 업데이트 (검증 없이)
+ipcMain.handle('quick-update-options-file', async (event, zipFilePath, optionsData) => {
+  try {
+    const updateResult = await optionsService.quickUpdateOptions(zipFilePath, optionsData);
+    return updateResult;
+  } catch (error) {
+    console.error('options.json 파일 빠른 업데이트 중 오류:', error);
+    return {
+      success: false,
+      message: `options.json 파일 빠른 업데이트 중 오류가 발생했습니다: ${error.message}`
     };
   }
 });

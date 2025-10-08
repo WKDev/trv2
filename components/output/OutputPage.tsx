@@ -14,7 +14,6 @@ export function OutputPage() {
   const [savePath, setSavePath] = useLocalStorage({
     key: "output-savePath",
     defaultValue: "바탕화면",
-    debounceMs: 100,
   })
 
   const handleBrowse = () => {

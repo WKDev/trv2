@@ -1,48 +1,106 @@
 "use client"
 
 // 차트와 ChartDataSelector는 이제 PreprocessingLayout에서 공유 컴포넌트로 관리됨
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { DataStatistics } from "@/components/shared/data-statistics"
 import { useData } from "@/contexts/data-context"
-import { memo, useState, useEffect } from "react"
-import { SensorType } from "@/components/shared/Chart"
+import { memo, useState, useEffect, useCallback } from "react"
 import { ReadonlyDataTable } from "@/components/shared/ReadonlyDataTable"
+import { useAggregationWorker } from "@/hooks/use-aggregation-worker"
+import { Progress } from "@/components/ui/progress"
 
 const AggregationTab = memo(() => {
   const { 
-    correctedData,
+    outlierRemovedData,
     aggregatedData, 
     aggregatedSelectedRows, 
     setAggregatedSelectedRows, 
     setAggregatedData,
-    hasData
+    hasData,
+    aggregationSettings,
+    updateAggregationSettings,
+    aggregationTabEntered,
+    setAggregationTabEntered
   } = useData()
+
+  // Web Worker 훅 사용
+  const { aggregateData, validateSettings, isProcessing, progress, error } = useAggregationWorker()
 
   // 센서 컨트롤 상태는 이제 PreprocessingLayout에서 관리됨
   
   // 패널 최소화 상태 (Accordion으로 대체되어 제거됨)
   
-  // 집계 설정 상태
-  const [aggregationInterval, setAggregationInterval] = useState<number>(1.0)
-  const [aggregationMethod, setAggregationMethod] = useState<'median' | 'mean' | 'ema'>('mean')
-  const [emaSpan, setEmaSpan] = useState<number>(5)
+  // 로컬 집계 설정 상태 (UI용)
+  const [localSettings, setLocalSettings] = useState({
+    interval: aggregationSettings.interval,
+    method: aggregationSettings.method,
+    emaSpan: aggregationSettings.emaSpan
+  })
 
-  // 보정된 데이터가 변경될 때 자동으로 집계 적용
-  useEffect(() => {
-    if (correctedData && correctedData.length > 0) {
-      const newAggregatedData = aggregateData(correctedData, aggregationInterval, aggregationMethod, aggregationMethod === 'ema' ? emaSpan : undefined)
-      setAggregatedData(newAggregatedData)
+  // Web Worker를 사용한 집계 수행
+  const performAggregation = useCallback(async (data: unknown[], settings: {interval: number, method: 'median' | 'mean' | 'ema', emaSpan: number}) => {
+    try {
+      console.log('🔄 집계 작업 시작:', {
+        inputDataLength: data.length,
+        settings: settings,
+        inputDataSample: data.slice(0, 2)
+      })
       
-      // 집계된 데이터가 변경되면 모든 행을 선택하도록 설정
-      const allIndices = new Set<number>(newAggregatedData.map((_, index) => index))
-      setAggregatedSelectedRows(allIndices)
+      // 설정 검증
+      const validation = await validateSettings(settings)
+      if (!validation.isValid) {
+        console.error('집계 설정 오류:', validation.errors)
+        return
+      }
+
+      // 집계 수행
+      const result = await aggregateData(data, settings)
+      if (result.success) {
+        console.log('✅ 집계 완료 - aggregatedData 설정:', {
+          resultDataLength: result.data.length,
+          sample: result.data.slice(0, 3)
+        })
+        setAggregatedData(result.data)
+        
+        // 집계된 데이터가 변경되면 모든 행을 선택하도록 설정
+        const allAggregatedIndices = new Set<number>(result.data.map((_, index) => index))
+        setAggregatedSelectedRows(allAggregatedIndices)
+        console.log('✅ 집계된 데이터 선택 행 설정 완료:', allAggregatedIndices.size)
+      } else {
+        console.error('집계 실패:', result.error)
+      }
+    } catch (error) {
+      console.error('집계 중 오류 발생:', error)
     }
-  }, [correctedData, aggregationInterval, aggregationMethod, emaSpan, setAggregatedData, setAggregatedSelectedRows])
+  }, [aggregateData, validateSettings, setAggregatedData, setAggregatedSelectedRows])
+
+  // 탭 진입 시에만 집계 작업 수행
+  useEffect(() => {
+    console.log('🔄 AggregationTab useEffect 실행:', {
+      aggregationTabEntered,
+      outlierRemovedDataLength: outlierRemovedData.length,
+      aggregationSettings
+    })
+    
+    if (aggregationTabEntered && outlierRemovedData && outlierRemovedData.length > 0) {
+      console.log('🔄 집계 탭 진입 - 집계 작업 시작')
+      performAggregation(outlierRemovedData, aggregationSettings)
+    } else {
+      console.log('⚠️ 집계 탭 진입 조건 미충족:', {
+        aggregationTabEntered,
+        hasOutlierRemovedData: outlierRemovedData.length > 0
+      })
+    }
+  }, [aggregationTabEntered, outlierRemovedData, aggregationSettings, performAggregation])
+
+  // 집계 설정이 변경될 때 로컬 상태 동기화
+  useEffect(() => {
+    setLocalSettings({
+      interval: aggregationSettings.interval,
+      method: aggregationSettings.method,
+      emaSpan: aggregationSettings.emaSpan
+    })
+  }, [aggregationSettings])
 
   const handleRowSelection = (rowIndex: number, checked: boolean) => {
     const newSelectedRows = new Set(aggregatedSelectedRows)
@@ -56,100 +114,16 @@ const AggregationTab = memo(() => {
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      const allIndices = new Set(aggregatedData.map((_, index) => index))
-      setAggregatedSelectedRows(allIndices)
+      const allSelectIndices = new Set(aggregatedData.map((_, index) => index))
+      setAggregatedSelectedRows(allSelectIndices)
     } else {
       setAggregatedSelectedRows(new Set())
     }
   }
 
-  // 센서 타입과 컬럼 관련 핸들러는 이제 PreprocessingLayout에서 관리됨
+  // 집계 설정 변경 핸들러들
 
-  // 집계 로직 함수들
-  const calculateMedian = (values: number[]) => {
-    const sorted = [...values].sort((a, b) => a - b)
-    const mid = Math.floor(sorted.length / 2)
-    return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid]
-  }
-
-  const calculateMean = (values: number[]) => {
-    return values.reduce((sum, val) => sum + val, 0) / values.length
-  }
-
-  const calculateEMA = (values: number[], span: number) => {
-    if (values.length === 0) return 0
-    if (values.length === 1) return values[0]
-    
-    const alpha = 2 / (span + 1)
-    let ema = values[0]
-    
-    for (let i = 1; i < values.length; i++) {
-      ema = alpha * values[i] + (1 - alpha) * ema
-    }
-    
-    return ema
-  }
-
-  const aggregateData = (data: any[], interval: number, method: 'median' | 'mean' | 'ema', emaSpan?: number) => {
-    if (!data || data.length === 0) return []
-    
-    const result = []
-    const numericColumns = ['Level1', 'Level2', 'Level3', 'Level4', 'Level5', 'Level6', 'Encoder3', 'Ang1', 'Ang2', 'Ang3']
-    
-    // Travelled 열을 기준으로 거리 구간별로 집계
-    const maxTravelled = Math.max(...data.map(row => parseFloat(row.Travelled) || 0))
-    const numIntervals = Math.ceil(maxTravelled / interval)
-    
-    for (let i = 0; i < numIntervals; i++) {
-      const startDistance = i * interval
-      const endDistance = (i + 1) * interval
-      
-      // 해당 거리 구간에 속하는 데이터 필터링
-      const chunk = data.filter(row => {
-        const travelled = parseFloat(row.Travelled) || 0
-        return travelled >= startDistance && travelled < endDistance
-      })
-      
-      if (chunk.length === 0) continue
-      
-      const aggregatedRow: any = {}
-      
-      // 각 컬럼에 대해 집계 수행
-      Object.keys(data[0]).forEach(key => {
-        if (numericColumns.includes(key)) {
-          const values = chunk.map(row => parseFloat(row[key]) || 0)
-          if (values.length > 0) {
-            switch (method) {
-              case 'median':
-                aggregatedRow[key] = calculateMedian(values)
-                break
-              case 'mean':
-                aggregatedRow[key] = calculateMean(values)
-                break
-              case 'ema':
-                aggregatedRow[key] = calculateEMA(values, emaSpan || 5)
-                break
-            }
-          } else {
-            aggregatedRow[key] = 0
-          }
-        } else if (key === 'Travelled') {
-          // Travelled는 구간의 중간값으로 설정
-          aggregatedRow[key] = (startDistance + endDistance) / 2
-        } else {
-          // 숫자가 아닌 컬럼은 첫 번째 값 사용
-          aggregatedRow[key] = chunk[0][key]
-        }
-      })
-      
-      result.push(aggregatedRow)
-    }
-    
-    return result
-  }
-
-  // 집계 설정 변경 핸들러
-  const handleAggregationIntervalChange = (value: string) => {
+  const handleAggregationIntervalChange = useCallback(async (value: string) => {
     const numValue = parseFloat(value) || 1
     
     // 집계구간이 0.1보다 큰지 검증
@@ -158,44 +132,38 @@ const AggregationTab = memo(() => {
       return
     }
     
-    setAggregationInterval(numValue)
-    // 보정된 데이터를 기반으로 집계된 데이터 업데이트
-    if (correctedData && correctedData.length > 0) {
-      const newAggregatedData = aggregateData(correctedData, numValue, aggregationMethod, aggregationMethod === 'ema' ? emaSpan : undefined)
-      setAggregatedData(newAggregatedData)
-      
-      // 집계된 데이터가 변경되면 모든 행을 선택하도록 설정
-      const allIndices = new Set<number>(newAggregatedData.map((_, index) => index))
-      setAggregatedSelectedRows(allIndices)
+    const newSettings = { ...localSettings, interval: numValue }
+    setLocalSettings(newSettings)
+    updateAggregationSettings({ interval: numValue })
+    
+    // 집계 탭에 진입했을 때만 집계 작업 수행
+    if (aggregationTabEntered && outlierRemovedData && outlierRemovedData.length > 0) {
+      await performAggregation(outlierRemovedData, newSettings)
     }
-  }
+  }, [localSettings, outlierRemovedData, performAggregation, updateAggregationSettings, aggregationTabEntered])
 
-  const handleAggregationMethodChange = (method: 'median' | 'mean' | 'ema') => {
-    setAggregationMethod(method)
-    // 보정된 데이터를 기반으로 집계된 데이터 업데이트
-    if (correctedData && correctedData.length > 0) {
-      const newAggregatedData = aggregateData(correctedData, aggregationInterval, method, method === 'ema' ? emaSpan : undefined)
-      setAggregatedData(newAggregatedData)
-      
-      // 집계된 데이터가 변경되면 모든 행을 선택하도록 설정
-      const allIndices = new Set<number>(newAggregatedData.map((_, index) => index))
-      setAggregatedSelectedRows(allIndices)
+  const handleAggregationMethodChange = useCallback(async (method: 'median' | 'mean' | 'ema') => {
+    const newSettings = { ...localSettings, method }
+    setLocalSettings(newSettings)
+    updateAggregationSettings({ method })
+    
+    // 집계 탭에 진입했을 때만 집계 작업 수행
+    if (aggregationTabEntered && outlierRemovedData && outlierRemovedData.length > 0) {
+      await performAggregation(outlierRemovedData, newSettings)
     }
-  }
+  }, [localSettings, outlierRemovedData, performAggregation, updateAggregationSettings, aggregationTabEntered])
 
-  const handleEmaSpanChange = (value: string) => {
+  const handleEmaSpanChange = useCallback(async (value: string) => {
     const numValue = parseInt(value) || 1
-    setEmaSpan(numValue)
-    // EMA 방식인 경우에만 보정된 데이터를 기반으로 집계된 데이터 업데이트
-    if (aggregationMethod === 'ema' && correctedData && correctedData.length > 0) {
-      const newAggregatedData = aggregateData(correctedData, aggregationInterval, 'ema', numValue)
-      setAggregatedData(newAggregatedData)
-      
-      // 집계된 데이터가 변경되면 모든 행을 선택하도록 설정
-      const allIndices = new Set<number>(newAggregatedData.map((_, index) => index))
-      setAggregatedSelectedRows(allIndices)
+    const newSettings = { ...localSettings, emaSpan: numValue }
+    setLocalSettings(newSettings)
+    updateAggregationSettings({ emaSpan: numValue })
+    
+    // 집계 탭에 진입했을 때만 집계 작업 수행
+    if (aggregationTabEntered && localSettings.method === 'ema' && outlierRemovedData && outlierRemovedData.length > 0) {
+      await performAggregation(outlierRemovedData, newSettings)
     }
-  }
+  }, [localSettings, outlierRemovedData, performAggregation, updateAggregationSettings, aggregationTabEntered])
 
   // 데이터가 없을 때는 로딩 상태 표시
   if (!hasData()) {
@@ -215,7 +183,7 @@ const AggregationTab = memo(() => {
       <div className="flex items-center justify-center py-12 text-muted-foreground">
         <div className="text-center">
           <p>집계할 데이터가 없습니다</p>
-          <p className="text-sm mt-2">데이터 보정 탭에서 데이터를 선택하고 전달해주세요</p>
+          <p className="text-sm mt-2">이상치 처리 탭에서 데이터를 처리하면 자동으로 전달됩니다</p>
         </div>
       </div>
     )
@@ -232,6 +200,25 @@ const AggregationTab = memo(() => {
                   <p className="text-sm text-muted-foreground mt-1">
                     선택 데이터수: {aggregatedSelectedRows.size} / 전체 데이터 수: {aggregatedData.length}
                   </p>
+                  {isProcessing && progress && (
+                    <div className="mt-2">
+                      <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+                        <span>집계 진행 중...</span>
+                        <span>{progress.progress}%</span>
+                      </div>
+                      <Progress value={progress.progress} className="h-2" />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        처리된 구간: {progress.processed} / {progress.total}
+                      </p>
+                    </div>
+                  )}
+                  {error && (
+                    <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-md">
+                      <p className="text-xs text-red-600">
+                        집계 오류: {error}
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             </CardHeader>
@@ -254,8 +241,8 @@ const AggregationTab = memo(() => {
                     return acc
                   }, {} as Record<string, number>)
                 }))}
-                columns={correctedData.length > 0 ? ['Index', 'Travelled', 'Level1', 'Level2', 'Level3', 'Level4', 'Level5', 'Level6', 'Encoder3', 'Ang1', 'Ang2', 'Ang3'].filter(col => 
-                  correctedData[0] && correctedData[0].hasOwnProperty(col)
+                columns={aggregatedData.length > 0 ? ['Index', 'Travelled', 'Level1', 'Level2', 'Level3', 'Level4', 'Level5', 'Level6', 'Encoder3', 'Ang1', 'Ang2', 'Ang3'].filter(col => 
+                  aggregatedData[0] && aggregatedData[0].hasOwnProperty(col)
                 ) : []}
                 showCheckboxes={true}
                 onRowSelection={handleRowSelection}
@@ -289,8 +276,9 @@ const AggregationTab = memo(() => {
         </div>
         
         <div className="text-sm text-muted-foreground">
-          <p>• 체크박스로 선택한 데이터는 [연결부 단차] 탭으로 전달됩니다</p>
+          <p>• 체크박스로 선택한 데이터는 [Scale & Offset] 탭으로 전달됩니다</p>
           <p>• 집계 설정을 변경하면 자동으로 데이터가 업데이트됩니다</p>
+          <p>• Web Worker를 사용하여 대용량 데이터 처리 시에도 UI가 블로킹되지 않습니다</p>
         </div>
         
     </div>

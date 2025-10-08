@@ -2,14 +2,14 @@
 
 import { AnalysisModule } from './analysis-module';
 
-export function AlignmentPage() {
+export function LongitudinalLevelIrregularityPage() {
   return (
     <div className="space-y-6">
       <AnalysisModule 
-        title="정렬도" 
-        moduleId="alignment"
+        title="평면도" 
+        moduleId="longitudinal-level-irregularity"
         hasRefLevel={true}
-        hasVehicleParams={true}
+        hasCycleParam={true}
       />
     </div>
   );

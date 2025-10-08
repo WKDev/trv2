@@ -71,6 +71,7 @@ declare global {
       // options.json 관련 API
       readOptionsFile: (zipFilePath: string) => Promise<{success: boolean, data?: any, message: string}>
       updateOptionsFile: (zipFilePath: string, optionsData: any) => Promise<{success: boolean, message: string}>
+      quickUpdateOptionsFile: (zipFilePath: string, optionsData: any) => Promise<{success: boolean, message: string}>
       getDefaultOptions: (section?: string) => Promise<{success: boolean, data?: any, message: string}>
     }
   }

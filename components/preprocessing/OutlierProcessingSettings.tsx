@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
+import { SaveButton } from './SaveButton';
 import { useData } from '@/contexts/data-context';
 
 export function OutlierProcessingSettings() {
@@ -14,7 +15,8 @@ export function OutlierProcessingSettings() {
     updateOutlierRemovalSettings,
     setCurrentApplyMode,
     setBulkSettings: setContextBulkSettings,
-    resetOutlierSettingsToDefault
+    resetOutlierSettingsToDefault,
+    triggerOutlierReprocessing
   } = useData();
 
   // 적용 모드 상태
@@ -28,22 +30,34 @@ export function OutlierProcessingSettings() {
     zScoreThreshold: 3.0
   });
 
-  // 이상치 제거 설정 변경 핸들러
+  // 이상치 제거 설정 변경 핸들러 (개별 적용 UI 폼 요소 상태만 업데이트)
   const handleColumnSettingChange = (column: string, field: 'useIQR' | 'iqrMultiplier' | 'useZScore' | 'zScoreThreshold', value: boolean | number) => {
+    console.log(`🔧 [개별 적용 UI] ${column}.${field} = ${value}`)
     updateOutlierRemovalSettings(column, { [field]: value });
+    // 개별 설정 변경 시에도 재처리 트리거
+    if (applyMode === 'individual') {
+      setTimeout(() => {
+        triggerOutlierReprocessing();
+      }, 100);
+    }
   };
 
-  // 일괄 적용 핸들러 (편의용 UI만 업데이트)
+  // 일괄 적용 핸들러 (일괄 적용 UI 폼 요소 상태만 업데이트)
   const handleBulkApply = (field: 'useIQR' | 'iqrMultiplier' | 'useZScore' | 'zScoreThreshold', value: boolean | number) => {
+    console.log(`🔧 [일괄 적용 UI] ${field} = ${value}`)
     const newBulkSettings = {
       ...bulkSettings,
       [field]: value
     };
     setBulkSettings(newBulkSettings);
     
-    // 일괄 적용 모드일 때는 컨텍스트에도 전달
+    // 일괄 적용 모드일 때는 컨텍스트에도 전달하고 즉시 재처리 트리거
     if (applyMode === 'bulk') {
       setContextBulkSettings(newBulkSettings);
+      // 설정 변경 시 즉시 재처리 트리거
+      setTimeout(() => {
+        triggerOutlierReprocessing();
+      }, 100);
     }
   };
 
@@ -60,14 +74,17 @@ export function OutlierProcessingSettings() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold">이상치 처리 설정</h3>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={resetOutlierSettingsToDefault}
-          className="text-xs"
-        >
-          기본값 복원
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={resetOutlierSettingsToDefault}
+            className="text-xs"
+          >
+            기본값 복원
+          </Button>
+          <SaveButton />
+        </div>
       </div>
       <p className="text-sm text-muted-foreground">
         IQR과 Z-score 방법을 사용하여 이상치를 감지하고 처리합니다.

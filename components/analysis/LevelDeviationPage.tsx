@@ -2,14 +2,13 @@
 
 import { AnalysisModule } from './analysis-module';
 
-export function AlignmentPage() {
+export function LevelDeviationPage() {
   return (
     <div className="space-y-6">
       <AnalysisModule 
-        title="정렬도" 
-        moduleId="alignment"
+        title="수준이상" 
+        moduleId="level-deviation"
         hasRefLevel={true}
-        hasVehicleParams={true}
       />
     </div>
   );

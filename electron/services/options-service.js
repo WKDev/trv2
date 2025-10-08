@@ -318,6 +318,115 @@ class OptionsService {
   }
 
   /**
+   * ZIP 파일에서 options.json만 빠르게 업데이트 (전체 재생성 없음)
+   * @param {string} zipFilePath ZIP 파일 경로
+   * @param {Object} optionsData 옵션 데이터
+   * @returns {Promise<Object>} 결과
+   */
+  async quickUpdateOptions(zipFilePath, optionsData) {
+    try {
+      const optionsJsonString = JSON.stringify(optionsData, null, 2);
+      
+      // yauzl로 ZIP 파일 열기
+      const zipfile = await openZip(zipFilePath, { lazyEntries: true });
+      
+      return new Promise((resolve, reject) => {
+        const yazl = require('yazl');
+        const zipfile2 = new yazl.ZipFile();
+        
+        // 임시 파일 경로
+        const tempDir = path.join(__dirname, '..', '..', 'temp');
+        const tempZipPath = path.join(tempDir, `quick_update_${Date.now()}.zip`);
+        const outputStream = require('fs').createWriteStream(tempZipPath);
+        zipfile2.outputStream.pipe(outputStream);
+        
+        let hasOptionsFile = false;
+        let hasError = false;
+        
+        zipfile.on('entry', (entry) => {
+          if (entry.fileName === 'options.json') {
+            // options.json 파일이 있으면 새 데이터로 교체
+            hasOptionsFile = true;
+            zipfile2.addBuffer(Buffer.from(optionsJsonString, 'utf8'), 'options.json');
+            zipfile.readEntry();
+          } else {
+            // 다른 파일들은 그대로 복사
+            zipfile.openReadStream(entry, (err, readStream) => {
+              if (err) {
+                hasError = true;
+                zipfile.close();
+                zipfile2.end();
+                reject(err);
+                return;
+              }
+              
+              zipfile2.addReadStream(readStream, entry.fileName);
+              readStream.on('end', () => {
+                zipfile.readEntry();
+              });
+              readStream.on('error', (streamError) => {
+                hasError = true;
+                zipfile.close();
+                zipfile2.end();
+                reject(streamError);
+              });
+            });
+          }
+        });
+        
+        zipfile.on('end', () => {
+          if (!hasOptionsFile && !hasError) {
+            // options.json 파일이 없으면 새로 추가
+            zipfile2.addBuffer(Buffer.from(optionsJsonString, 'utf8'), 'options.json');
+          }
+          
+          zipfile.close();
+          zipfile2.end();
+        });
+        
+        zipfile.on('error', (error) => {
+          hasError = true;
+          zipfile.close();
+          zipfile2.end();
+          reject(error);
+        });
+        
+        // yazl ZipFile이 완료되면 파일 교체
+        zipfile2.outputStream.on('finish', async () => {
+          try {
+            // 파일이 완전히 쓰여졌는지 확인
+            await new Promise(resolve => setTimeout(resolve, 50));
+            
+            // 원본 파일을 임시 파일로 교체
+            await fs.rename(tempZipPath, zipFilePath);
+            
+            resolve({
+              success: true,
+              message: 'options.json 파일이 빠르게 업데이트되었습니다.'
+            });
+          } catch (renameError) {
+            // 임시 파일 정리
+            try {
+              await fs.unlink(tempZipPath);
+            } catch (cleanupError) {
+              console.error('임시 파일 정리 중 오류:', cleanupError);
+            }
+            reject(renameError);
+          }
+        });
+        
+        zipfile.readEntry();
+      });
+    } catch (error) {
+      console.error('빠른 options.json 업데이트 중 오류:', error);
+      return {
+        success: false,
+        message: '빠른 options.json 업데이트 중 오류가 발생했습니다.'
+      };
+    }
+  }
+
+  /**
    * 기본 옵션 데이터 반환
    * @returns {Object} 기본 옵션 데이터
    */

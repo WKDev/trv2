@@ -126,7 +126,15 @@ export const ChartJSLineChart = memo(({
     return new Set(selectedRows)
   }, [selectedRows.size, Array.from(selectedRows).join(',')])
   
-  // 데이터 최적화: 선택된 행만 필터링 (모든 데이터 표시)
+  // 데이터 샘플링 함수 (성능 최적화)
+  const sampleDataForChart = useCallback((data: any[], maxPoints: number = 1000) => {
+    if (data.length <= maxPoints) return data
+    
+    const step = Math.ceil(data.length / maxPoints)
+    return data.filter((_, index) => index % step === 0)
+  }, [])
+
+  // 데이터 최적화: 선택된 행만 필터링 + 샘플링 적용
   const optimizedData = useMemo(() => {
     if (!data || data.length === 0) return []
     
@@ -135,13 +143,19 @@ export const ChartJSLineChart = memo(({
       ? data.filter((_, index) => stableSelectedRows.has(index))
       : data
     
-    
-    // 모든 데이터 표시 - 샘플링 제거
-    return filteredData
-  }, [data, stableSelectedRows])
+    // 대용량 데이터 시 샘플링 적용 (차트 성능 최적화)
+    return sampleDataForChart(filteredData, maxDataPoints)
+  }, [data, stableSelectedRows, sampleDataForChart, maxDataPoints])
 
   // 차트 데이터를 비동기로 생성
   useEffect(() => {
+    console.log('📈 차트 데이터 업데이트 시작:', {
+      optimizedDataLength: optimizedData.length,
+      selectedSensorType,
+      visibleColumnsSize: stableVisibleColumns.size,
+      title
+    })
+    
     if (optimizedData.length === 0) {
       setChartData({
         labels: [],
@@ -153,71 +167,73 @@ export const ChartJSLineChart = memo(({
 
     setIsChartLoading(true)
     
-    // 차트 데이터 생성을 다음 프레임으로 지연시켜 UI 블로킹 방지
-    const timeoutId = setTimeout(() => {
-      try {
-        // x축은 Travelled 컬럼 사용 - 이미 포맷된 값으로 설정
-        const labels = optimizedData.map(row => formatTravelled(row.Travelled || 0))
-        
-        // 표시할 컬럼들 결정
-        let columnsToShow: string[] = []
-        
-        if (selectedSensorType && stableVisibleColumns && stableVisibleColumns.size > 0) {
-          // 외부에서 센서 타입과 컬럼이 전달된 경우
-          columnsToShow = SENSOR_COLUMNS[selectedSensorType].filter(col => 
-            stableVisibleColumns.has(col)
-          )
-        } else {
-          // 일반적인 경우 모든 숫자 컬럼 표시 (Travelled 제외)
-          const allColumns = Object.keys(optimizedData[0] || {})
-          columnsToShow = allColumns.filter(col => 
-            col !== 'Travelled' && 
-            col !== 'UnixTimestamp' && 
-            col !== 'Elasped' && 
-            col !== 'Index' &&
-            typeof optimizedData[0][col] === 'number'
-          )
-        }
-
-        const datasets = columnsToShow.map((column, index) => {
-          // 컬럼별 고정 색상 사용, 없으면 기본 색상 사용
-          const color = COLUMN_COLORS[column] || CHART_COLORS[index % CHART_COLORS.length]
-          return {
-            label: column,
-            data: optimizedData.map(row => row[column] || 0),
-            borderColor: color,
-            backgroundColor: color + '20',
-            borderWidth: 1.0, // 선 두께를 얇게 조정
-            pointRadius: 0, // 점 숨김으로 성능 향상
-            pointHoverRadius: 4,
-            tension: 0, // 직선으로 변경 (성능 향상)
-            // 성능 최적화 옵션 제거하여 모든 데이터 표시
-            spanGaps: false,
-          }
-        })
-
-        setChartData({
-          labels,
-          datasets
-        })
-      } catch (error) {
-        console.error('차트 데이터 생성 중 오류:', error)
-        setChartData({
-          labels: [],
-          datasets: []
-        })
-      } finally {
-        setIsChartLoading(false)
+    // 차트 데이터 즉시 생성 (지연 제거)
+    try {
+      // x축은 Travelled 컬럼 사용 - 이미 포맷된 값으로 설정
+      const labels = optimizedData.map(row => formatTravelled(row.Travelled || 0))
+      
+      // 표시할 컬럼들 결정
+      let columnsToShow: string[] = []
+      
+      if (selectedSensorType && stableVisibleColumns && stableVisibleColumns.size > 0) {
+        // 외부에서 센서 타입과 컬럼이 전달된 경우
+        columnsToShow = SENSOR_COLUMNS[selectedSensorType].filter(col => 
+          stableVisibleColumns.has(col)
+        )
+      } else {
+        // 일반적인 경우 모든 숫자 컬럼 표시 (Travelled 제외)
+        const allColumns = Object.keys(optimizedData[0] || {})
+        columnsToShow = allColumns.filter(col => 
+          col !== 'Travelled' && 
+          col !== 'UnixTimestamp' && 
+          col !== 'Elasped' && 
+          col !== 'Index' &&
+          typeof optimizedData[0][col] === 'number'
+        )
       }
-    }, 0)
 
-    return () => clearTimeout(timeoutId)
-  }, [optimizedData, selectedSensorType, stableVisibleColumns])
+      const datasets = columnsToShow.map((column, index) => {
+        // 컬럼별 고정 색상 사용, 없으면 기본 색상 사용
+        const color = COLUMN_COLORS[column] || CHART_COLORS[index % CHART_COLORS.length]
+        return {
+          label: column,
+          data: optimizedData.map(row => row[column] || 0),
+          borderColor: color,
+          backgroundColor: color + '20',
+          borderWidth: 1.0, // 선 두께를 얇게 조정
+          pointRadius: 0, // 점 숨김으로 성능 향상
+          pointHoverRadius: 4,
+          tension: 0, // 직선으로 변경 (성능 향상)
+          // 성능 최적화 옵션 제거하여 모든 데이터 표시
+          spanGaps: false,
+        }
+      })
+
+      console.log('📈 차트 데이터 생성 완료:', {
+        labelsCount: labels.length,
+        datasetsCount: datasets.length,
+        columnsToShow
+      })
+
+      setChartData({
+        labels,
+        datasets
+      })
+    } catch (error) {
+      console.error('차트 데이터 생성 중 오류:', error)
+      setChartData({
+        labels: [],
+        datasets: []
+      })
+    } finally {
+      setIsChartLoading(false)
+    }
+  }, [optimizedData, selectedSensorType, stableVisibleColumns, title])
 
   // 차트 옵션
   const options: ChartOptions<'line'> = useMemo(() => {
-    // 데이터가 10,000개 이상이면 애니메이션 비활성화
-    const shouldDisableAnimation = optimizedData.length >= 1000
+    // 데이터가 500개 이상이면 애니메이션 비활성화 (성능 최적화)
+    const shouldDisableAnimation = optimizedData.length >= 500
     
     return {
       responsive: true,
@@ -506,7 +522,9 @@ export const ChartJSLineChart = memo(({
       )}
       
       <div className="h-[300px] w-full relative">
-        {isChartLoading ? (
+      <Line data={chartData} options={options} />
+
+        {/* {isChartLoading ? (
           <div className="flex items-center justify-center h-full">
             <div className="flex flex-col items-center space-y-2">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -515,7 +533,7 @@ export const ChartJSLineChart = memo(({
           </div>
         ) : (
           <Line data={chartData} options={options} />
-        )}
+        )} */}
       </div>
     </div>
   )

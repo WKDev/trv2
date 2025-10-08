@@ -71,22 +71,34 @@ const OutlierProcessingTab = memo(() => {
 
   // 센서 타입과 컬럼 관련 핸들러는 이제 PreprocessingLayout에서 관리됨
 
-  // 이상치 제거 설정 변경 핸들러
+  // 이상치 제거 설정 변경 핸들러 (개별 적용 UI 폼 요소 상태만 업데이트)
   const handleColumnSettingChange = (column: string, field: 'useIQR' | 'iqrMultiplier' | 'useZScore' | 'zScoreThreshold', value: boolean | number) => {
+    console.log(`🔧 [개별 적용 UI] ${column}.${field} = ${value}`)
     updateOutlierRemovalSettings(column, { [field]: value })
+    // 개별 설정 변경 시에도 재처리 트리거
+    if (applyMode === 'individual') {
+      setTimeout(() => {
+        triggerOutlierReprocessing()
+      }, 100)
+    }
   }
 
-  // 일괄 적용 핸들러 (편의용 UI만 업데이트)
+  // 일괄 적용 핸들러 (일괄 적용 UI 폼 요소 상태만 업데이트)
   const handleBulkApply = (field: 'useIQR' | 'iqrMultiplier' | 'useZScore' | 'zScoreThreshold', value: boolean | number) => {
+    console.log(`🔧 [일괄 적용 UI] ${field} = ${value}`)
     const newBulkSettings = {
       ...bulkSettings,
       [field]: value
     }
     setBulkSettings(newBulkSettings)
     
-    // 일괄 적용 모드일 때는 컨텍스트에도 전달
+    // 일괄 적용 모드일 때는 컨텍스트에도 전달하고 즉시 재처리 트리거
     if (applyMode === 'bulk') {
       setContextBulkSettings(newBulkSettings)
+      // 설정 변경 시 즉시 재처리 트리거
+      setTimeout(() => {
+        triggerOutlierReprocessing()
+      }, 100)
     }
   }
 
@@ -132,10 +144,7 @@ const OutlierProcessingTab = memo(() => {
                   </p>
                 </div>
                 
-                {/* 자동 적용 안내 */}
-                <div className="text-sm text-muted-foreground">
-                  자동으로 이상치가 처리됩니다
-                </div>
+
               </div>
             </CardHeader>
             <CardContent>

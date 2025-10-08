@@ -6,6 +6,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { OutlierProcessingSettings } from './OutlierProcessingSettings';
 import { ScaleOffsetSettings } from './ScaleOffsetSettings';
 import { AggregationSettings } from './AggregationSettings';
+import { SaveButton } from './SaveButton';
 import { SharedChartSection } from '@/components/shared/shared-chart-section';
 import { SensorType } from '@/components/shared/Chart';
 import { useData } from '@/contexts/data-context';
@@ -26,7 +27,8 @@ export function PreprocessingLayout({ children }: PreprocessingLayoutProps) {
     selectedRows,
     outlierRemovedSelectedRows,
     correctedSelectedRows,
-    aggregatedSelectedRows
+    aggregatedSelectedRows,
+    setAggregationTabEntered
   } = useData();
 
   const getCurrentTab = () => {
@@ -38,12 +40,34 @@ export function PreprocessingLayout({ children }: PreprocessingLayoutProps) {
   };
 
   const handleTabChange = (value: string) => {
+    console.log('🔄 PreprocessingLayout 탭 변경:', {
+      from: getCurrentTab(),
+      to: value,
+      timestamp: new Date().toISOString()
+    });
+    
+    // 집계 탭 진입/이탈 감지
+    if (value === 'aggregation') {
+      console.log('✅ 집계 탭 진입 - setAggregationTabEntered(true)');
+      setAggregationTabEntered(true);
+    } else {
+      console.log('❌ 집계 탭 이탈 - setAggregationTabEntered(false)');
+      setAggregationTabEntered(false);
+    }
+    
     router.push(`/preprocessing/${value}`);
   };
 
   // 현재 탭에 따른 선택된 행들
   const currentSelectedRows = useMemo(() => {
     const currentTab = getCurrentTab();
+    console.log(`🔄 탭 변경 감지: ${currentTab}`, {
+      selectedRowsSize: selectedRows.size,
+      outlierRemovedSelectedRowsSize: outlierRemovedSelectedRows.size,
+      correctedSelectedRowsSize: correctedSelectedRows.size,
+      aggregatedSelectedRowsSize: aggregatedSelectedRows.size
+    });
+    
     switch(currentTab) {
       case 'raw-analysis':
         return selectedRows;
@@ -91,8 +115,8 @@ export function PreprocessingLayout({ children }: PreprocessingLayoutProps) {
         <TabsList className="grid w-full grid-cols-4 mb-4 flex-shrink-0">
           <TabsTrigger value="raw-analysis">RAW 데이터</TabsTrigger>
           <TabsTrigger value="outlier-replacement">이상치 처리</TabsTrigger>
-          <TabsTrigger value="scale-offset">Scale & Offset</TabsTrigger>
           <TabsTrigger value="aggregation">집계</TabsTrigger>
+          <TabsTrigger value="scale-offset">Scale & Offset</TabsTrigger>
         </TabsList>
         
         <div className="flex-1 flex min-h-0 h-full">
@@ -116,10 +140,10 @@ export function PreprocessingLayout({ children }: PreprocessingLayoutProps) {
             <TabsContent value="outlier-replacement" className="h-full m-0">
               {children}
             </TabsContent>
-            <TabsContent value="scale-offset" className="h-full m-0">
+            <TabsContent value="aggregation" className="h-full m-0">
               {children}
             </TabsContent>
-            <TabsContent value="aggregation" className="h-full m-0">
+            <TabsContent value="scale-offset" className="h-full m-0">
               {children}
             </TabsContent>
           </div>
@@ -144,12 +168,12 @@ function PreprocessingSidebar() {
     return <OutlierReplacementSidebar />;
   }
   
-  if (pathname.includes('/scale-offset')) {
-    return <ScaleOffsetSidebar />;
-  }
-  
   if (pathname.includes('/aggregation')) {
     return <AggregationSidebar />;
+  }
+  
+  if (pathname.includes('/scale-offset')) {
+    return <ScaleOffsetSidebar />;
   }
 
   return null;
@@ -158,7 +182,10 @@ function PreprocessingSidebar() {
 function RawAnalysisSidebar() {
   return (
     <div className="space-y-4">
-      <h3 className="text-lg font-semibold">RAW 데이터</h3>
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold">RAW 데이터</h3>
+        <SaveButton />
+      </div>
       <p className="text-sm text-muted-foreground">
         원본 데이터를 확인하고 수정할 수 있습니다.
       </p>

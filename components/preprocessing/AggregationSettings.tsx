@@ -1,50 +1,85 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { SaveButton } from './SaveButton';
 import { useData } from '@/contexts/data-context';
+import { useAggregationWorker } from '@/hooks/use-aggregation-worker';
 
 export function AggregationSettings() {
   const { 
     aggregatedSelectedRows, 
     resetAggregationSettingsToDefault,
     aggregationSettings,
-    updateAggregationSettings
+    updateAggregationSettings,
+    correctedData
   } = useData();
 
-  const handleAggregationIntervalChange = (value: string) => {
+  const { validateSettings } = useAggregationWorker();
+
+  const handleAggregationIntervalChange = useCallback(async (value: string) => {
     const numValue = parseFloat(value);
     if (!isNaN(numValue) && numValue > 0.1) {
-      updateAggregationSettings({ interval: numValue });
+      const newSettings = { ...aggregationSettings, interval: numValue };
+      
+      // 설정 검증
+      const validation = await validateSettings(newSettings);
+      if (validation.isValid) {
+        updateAggregationSettings({ interval: numValue });
+      } else {
+        console.error('집계 간격 설정 오류:', validation.errors);
+        alert('집계 간격 설정이 유효하지 않습니다: ' + validation.errors.join(', '));
+      }
     }
-  };
+  }, [aggregationSettings, updateAggregationSettings, validateSettings]);
 
-  const handleAggregationMethodChange = (value: 'median' | 'mean' | 'ema') => {
-    updateAggregationSettings({ method: value });
-  };
+  const handleAggregationMethodChange = useCallback(async (value: 'median' | 'mean' | 'ema') => {
+    const newSettings = { ...aggregationSettings, method: value };
+    
+    // 설정 검증
+    const validation = await validateSettings(newSettings);
+    if (validation.isValid) {
+      updateAggregationSettings({ method: value });
+    } else {
+      console.error('집계 방법 설정 오류:', validation.errors);
+      alert('집계 방법 설정이 유효하지 않습니다: ' + validation.errors.join(', '));
+    }
+  }, [aggregationSettings, updateAggregationSettings, validateSettings]);
 
-  const handleEmaSpanChange = (value: string) => {
+  const handleEmaSpanChange = useCallback(async (value: string) => {
     const numValue = parseInt(value);
     if (!isNaN(numValue) && numValue >= 1) {
-      updateAggregationSettings({ emaSpan: numValue });
+      const newSettings = { ...aggregationSettings, emaSpan: numValue };
+      
+      // 설정 검증
+      const validation = await validateSettings(newSettings);
+      if (validation.isValid) {
+        updateAggregationSettings({ emaSpan: numValue });
+      } else {
+        console.error('EMA span 설정 오류:', validation.errors);
+        alert('EMA span 설정이 유효하지 않습니다: ' + validation.errors.join(', '));
+      }
     }
-  };
+  }, [aggregationSettings, updateAggregationSettings, validateSettings]);
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold">집계 설정</h3>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={resetAggregationSettingsToDefault}
-          className="text-xs"
-        >
-          기본값 복원
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={resetAggregationSettingsToDefault}
+            className="text-xs"
+          >
+            기본값 복원
+          </Button>
+          <SaveButton />
+        </div>
       </div>
       <p className="text-sm text-muted-foreground">
         데이터를 집계하여 요약 통계를 생성합니다.

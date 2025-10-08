@@ -2,14 +2,13 @@
 
 import { AnalysisModule } from './analysis-module';
 
-export function AlignmentPage() {
+export function GuideRailClearancePage() {
   return (
     <div className="space-y-6">
       <AnalysisModule 
-        title="정렬도" 
-        moduleId="alignment"
+        title="가이드레일 거리" 
+        moduleId="guiderail-clearance"
         hasRefLevel={true}
-        hasVehicleParams={true}
       />
     </div>
   );

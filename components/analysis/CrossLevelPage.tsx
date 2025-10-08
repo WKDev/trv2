@@ -2,14 +2,13 @@
 
 import { AnalysisModule } from './analysis-module';
 
-export function AlignmentPage() {
+export function CrossLevelPage() {
   return (
     <div className="space-y-6">
       <AnalysisModule 
-        title="정렬도" 
-        moduleId="alignment"
+        title="고저차" 
+        moduleId="cross-level"
         hasRefLevel={true}
-        hasVehicleParams={true}
       />
     </div>
   );
