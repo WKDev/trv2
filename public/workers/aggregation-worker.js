@@ -135,7 +135,11 @@ function aggregateData(data, settings) {
         aggregatedRow[key] = (startDistance + endDistance) / 2;
       } else if (key === 'Index') {
         // Index는 구간의 첫 번째 값 사용 (또는 구간 인덱스)
-        aggregatedRow[key] = chunk[0] && chunk[0][key] !== undefined ? chunk[0][key] : i + 1;
+        if (chunk[0] && chunk[0][key] !== undefined && chunk[0][key] !== null) {
+          aggregatedRow[key] = parseInt(chunk[0][key]) || i + 1;
+        } else {
+          aggregatedRow[key] = i + 1;
+        }
       } else {
         // 기타 컬럼은 첫 번째 값 사용
         aggregatedRow[key] = chunk[0] && chunk[0][key] !== undefined ? chunk[0][key] : null;

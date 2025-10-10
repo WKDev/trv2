@@ -1038,8 +1038,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const newRow = { ...row }
       // 원본 데이터에서 메타데이터(Index, Travelled 등) 업데이트
       if (data[index]) {
-        newRow.Index = data[index].Index
-        newRow.Travelled = data[index].Travelled
+        newRow.Index = parseInt(data[index].Index) || index + 1
+        newRow.Travelled = parseFloat(data[index].Travelled) || 0
       }
       changedColumns.forEach(key => {
         // 원본 데이터에서 해당 컬럼 값을 가져와서 새로운 보정값 적용
