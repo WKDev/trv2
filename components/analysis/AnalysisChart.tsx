@@ -94,7 +94,7 @@ export const AnalysisChart = memo(({
       ? data.slice(0, maxDataPoints)
       : data
 
-    const labels = limitedData.map((_, index) => index.toString())
+    const labels = limitedData.map((dataPoint) => formatTravelled(dataPoint.Travelled))
 
     if (dataFormat === 'left-right') {
       return {
@@ -221,12 +221,14 @@ export const AnalysisChart = memo(({
           grid: {
             color: 'rgba(0, 0, 0, 0.1)',
           },
-          ...(chartOptions.yAxisMode === 'manual' && {
+          ...(chartOptions.yAxisMode === 'manual' && chartOptions.yAxisMin !== undefined && chartOptions.yAxisMax !== undefined && {
             min: chartOptions.yAxisMin,
             max: chartOptions.yAxisMax,
-            ticks: {
-              stepSize: chartOptions.yAxisTickStep,
-            },
+            ...(chartOptions.yAxisTickStep !== undefined && {
+              ticks: {
+                stepSize: chartOptions.yAxisTickStep,
+              },
+            }),
           }),
         },
       },

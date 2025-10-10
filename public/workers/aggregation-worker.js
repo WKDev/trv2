@@ -69,6 +69,7 @@ function aggregateData(data, settings) {
   const { interval, method, emaSpan } = settings;
   const result = [];
   const numericColumns = ['Level1', 'Level2', 'Level3', 'Level4', 'Level5', 'Level6', 'Encoder3', 'Ang1', 'Ang2', 'Ang3'];
+  const metaColumns = ['Index', 'Travelled'];
   
   // Travelled 열을 기준으로 거리 구간별로 집계
   const maxTravelled = Math.max(...data.map(row => parseFloat(row.Travelled) || 0));
@@ -132,9 +133,12 @@ function aggregateData(data, settings) {
       } else if (key === 'Travelled') {
         // Travelled는 구간의 중간값으로 설정
         aggregatedRow[key] = (startDistance + endDistance) / 2;
+      } else if (key === 'Index') {
+        // Index는 구간의 첫 번째 값 사용 (또는 구간 인덱스)
+        aggregatedRow[key] = chunk[0] && chunk[0][key] !== undefined ? chunk[0][key] : i + 1;
       } else {
-        // 숫자가 아닌 컬럼은 첫 번째 값 사용
-        aggregatedRow[key] = chunk[0][key];
+        // 기타 컬럼은 첫 번째 값 사용
+        aggregatedRow[key] = chunk[0] && chunk[0][key] !== undefined ? chunk[0][key] : null;
       }
     });
     

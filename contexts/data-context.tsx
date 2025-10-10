@@ -1002,7 +1002,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (!prevCorrectionData?.preprocessing) {
       console.log('🔄 전체 보정 데이터 계산 (초기 로드)')
       return data.map(row => {
-        const newRow = { ...row }
+        const newRow = { ...row } // 모든 원본 데이터를 복사 (Index, Travelled 등 포함)
         Object.keys(correctionData.preprocessing).forEach(key => {
           const correction = correctionData.preprocessing[key]
           if (newRow[key] !== undefined) {
@@ -1036,6 +1036,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
     // 캐시된 데이터를 기반으로 변경된 컬럼만 재계산
     return correctedDataCacheRef.current.map((row: any, index: number) => {
       const newRow = { ...row }
+      // 원본 데이터에서 메타데이터(Index, Travelled 등) 업데이트
+      if (data[index]) {
+        newRow.Index = data[index].Index
+        newRow.Travelled = data[index].Travelled
+      }
       changedColumns.forEach(key => {
         // 원본 데이터에서 해당 컬럼 값을 가져와서 새로운 보정값 적용
         const originalValue = data[index]?.[key]

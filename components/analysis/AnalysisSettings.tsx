@@ -78,6 +78,13 @@ export function AnalysisSettings({ moduleId, title, hasLeftRight = false }: Anal
     defaultValue: config.defaultRefLevel,
   });
 
+  // Reference Level 변경 시 즉시 반영
+  const handleRefLevelChange = (value: number) => {
+    setRefLevel(value);
+    // localStorage 변경 이벤트 발생시켜 AnalysisLayout에서 감지하도록 함
+    window.dispatchEvent(new Event('storage'));
+  };
+
   // Y축 범위 설정
   const [yAxisEnabled, setYAxisEnabled] = useLocalStorage({
     key: `analysis-${moduleId}-yAxisEnabled`,
@@ -93,6 +100,32 @@ export function AnalysisSettings({ moduleId, title, hasLeftRight = false }: Anal
     key: `analysis-${moduleId}-yAxisMax`,
     defaultValue: config.defaultYMax,
   });
+
+  const [yAxisTickStep, setYAxisTickStep] = useLocalStorage({
+    key: `analysis-${moduleId}-yAxisTickStep`,
+    defaultValue: 1,
+  });
+
+  // Y축 범위 설정 변경 시 즉시 반영
+  const handleYAxisEnabledChange = (enabled: boolean) => {
+    setYAxisEnabled(enabled);
+    window.dispatchEvent(new Event('storage'));
+  };
+
+  const handleYAxisMinChange = (value: number) => {
+    setYAxisMin(value);
+    window.dispatchEvent(new Event('storage'));
+  };
+
+  const handleYAxisMaxChange = (value: number) => {
+    setYAxisMax(value);
+    window.dispatchEvent(new Event('storage'));
+  };
+
+  const handleYAxisTickStepChange = (value: number) => {
+    setYAxisTickStep(value);
+    window.dispatchEvent(new Event('storage'));
+  };
 
   // Scale & Offset 설정
   const [scaleL, setScaleL] = useElectronStorage({
@@ -147,12 +180,13 @@ export function AnalysisSettings({ moduleId, title, hasLeftRight = false }: Anal
 
   // 기본값으로 리셋
   const handleResetRefLevel = () => {
-    setRefLevel(config.defaultRefLevel);
+    handleRefLevelChange(config.defaultRefLevel);
   };
 
   const handleResetYAxis = () => {
-    setYAxisMin(config.defaultYMin);
-    setYAxisMax(config.defaultYMax);
+    handleYAxisMinChange(config.defaultYMin);
+    handleYAxisMaxChange(config.defaultYMax);
+    handleYAxisTickStepChange(1);
   };
 
   const handleResetScaleOffset = () => {
@@ -182,7 +216,7 @@ export function AnalysisSettings({ moduleId, title, hasLeftRight = false }: Anal
               type="number"
               step="0.1"
               value={refLevel}
-              onChange={(e) => setRefLevel(Number.parseFloat(e.target.value) || 0)}
+              onChange={(e) => handleRefLevelChange(Number.parseFloat(e.target.value) || 0)}
               className="bg-background flex-1"
             />
             <span className="text-sm font-medium text-foreground">{config.suffix}</span>
@@ -208,7 +242,7 @@ export function AnalysisSettings({ moduleId, title, hasLeftRight = false }: Anal
             <Checkbox
               id="yAxisEnabled"
               checked={yAxisEnabled}
-              onCheckedChange={(checked) => setYAxisEnabled(checked as boolean)}
+              onCheckedChange={(checked) => handleYAxisEnabledChange(checked as boolean)}
             />
             <Label htmlFor="yAxisEnabled" className="text-sm">
               Y축 범위 수동 설정
@@ -216,30 +250,46 @@ export function AnalysisSettings({ moduleId, title, hasLeftRight = false }: Anal
           </div>
           
           {yAxisEnabled && (
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label htmlFor="yAxisMin" className="text-xs text-muted-foreground">
-                  Min
-                </Label>
-                <Input
-                  id="yAxisMin"
-                  type="number"
-                  step="1"
-                  value={yAxisMin}
-                  onChange={(e) => setYAxisMin(Number.parseFloat(e.target.value) || 0)}
-                  className="bg-background"
-                />
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="yAxisMin" className="text-xs text-muted-foreground">
+                    Min
+                  </Label>
+                  <Input
+                    id="yAxisMin"
+                    type="number"
+                    step="1"
+                    value={yAxisMin}
+                    onChange={(e) => handleYAxisMinChange(Number.parseFloat(e.target.value) || 0)}
+                    className="bg-background"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="yAxisMax" className="text-xs text-muted-foreground">
+                    Max
+                  </Label>
+                  <Input
+                    id="yAxisMax"
+                    type="number"
+                    step="1"
+                    value={yAxisMax}
+                    onChange={(e) => handleYAxisMaxChange(Number.parseFloat(e.target.value) || 0)}
+                    className="bg-background"
+                  />
+                </div>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="yAxisMax" className="text-xs text-muted-foreground">
-                  Max
+                <Label htmlFor="yAxisTickStep" className="text-xs text-muted-foreground">
+                  Tick Step
                 </Label>
                 <Input
-                  id="yAxisMax"
+                  id="yAxisTickStep"
                   type="number"
-                  step="1"
-                  value={yAxisMax}
-                  onChange={(e) => setYAxisMax(Number.parseFloat(e.target.value) || 0)}
+                  step="0.1"
+                  min="0.1"
+                  value={yAxisTickStep}
+                  onChange={(e) => handleYAxisTickStepChange(Number.parseFloat(e.target.value) || 1)}
                   className="bg-background"
                 />
               </div>

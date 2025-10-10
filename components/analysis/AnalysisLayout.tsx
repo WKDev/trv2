@@ -1,11 +1,12 @@
 'use client';
 
-import { ReactNode, useState, useMemo } from 'react';
+import { ReactNode, useState, useMemo, useEffect } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useRouter, usePathname } from 'next/navigation';
 import { AnalysisChart, AnalysisChartOptions } from './AnalysisChart';
 import { useData } from '@/contexts/data-context';
 import { AnalysisSettings } from './AnalysisSettings';
+import { useLocalStorage } from '@/hooks/use-local-storage';
 
 interface AnalysisLayoutProps {
   children: ReactNode;
@@ -15,12 +16,54 @@ export function AnalysisLayout({ children }: AnalysisLayoutProps) {
   const router = useRouter();
   const pathname = usePathname();
   
-  // 차트 옵션 상태 관리
+  // 차트 옵션 상태 관리 (y축 범위 설정에 따라 동적으로 업데이트)
   const [chartOptions, setChartOptions] = useState<AnalysisChartOptions>({ yAxisMode: 'auto' });
+
+  // localStorage 변경 감지를 위한 상태
+  const [settingsVersion, setSettingsVersion] = useState(0);
+  
+  // localStorage 변경 감지
+  useEffect(() => {
+    const handleStorageChange = () => {
+      setSettingsVersion(prev => prev + 1);
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    
+    // 주기적으로 localStorage 변경 확인 (같은 탭 내에서의 변경 감지)
+    const interval = setInterval(() => {
+      const currentTab = getCurrentTab();
+      const currentRefLevel = localStorage.getItem(`analysis-${currentTab}-refLevel`);
+      const currentYAxisEnabled = localStorage.getItem(`analysis-${currentTab}-yAxisEnabled`);
+      const currentYAxisMin = localStorage.getItem(`analysis-${currentTab}-yAxisMin`);
+      const currentYAxisMax = localStorage.getItem(`analysis-${currentTab}-yAxisMax`);
+      const currentYAxisTickStep = localStorage.getItem(`analysis-${currentTab}-yAxisTickStep`);
+      
+      // 이전 값과 비교하여 변경되었으면 상태 업데이트
+      const currentSettings = JSON.stringify({
+        refLevel: currentRefLevel,
+        yAxisEnabled: currentYAxisEnabled,
+        yAxisMin: currentYAxisMin,
+        yAxisMax: currentYAxisMax,
+        yAxisTickStep: currentYAxisTickStep
+      });
+      
+      if (currentSettings !== localStorage.getItem('_lastAnalysisSettings')) {
+        localStorage.setItem('_lastAnalysisSettings', currentSettings);
+        setSettingsVersion(prev => prev + 1);
+      }
+    }, 100); // 100ms마다 확인
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      clearInterval(interval);
+    };
+  }, [pathname]);
   
   const { 
     selectedRows,
-    aggregatedSelectedRows
+    aggregatedSelectedRows,
+    correctedData
   } = useData();
 
   const getCurrentTab = () => {
@@ -59,7 +102,24 @@ export function AnalysisLayout({ children }: AnalysisLayoutProps) {
   // 분석용 차트 데이터 변환
   const analysisChartData = useMemo(() => {
     const currentTab = getCurrentTab();
-    // 여기서는 샘플 데이터를 사용하지만, 실제로는 각 분석 모듈에서 계산된 데이터를 사용해야 함
+    
+    // 수준 이상 탭의 경우 실제 데이터 계산
+    if (currentTab === 'level-deviation' && correctedData && correctedData.length > 0) {
+      return correctedData.map((row: any) => {
+        const level2 = parseFloat(row.Level2) || 0;
+        const level5 = parseFloat(row.Level5) || 0;
+        const level6 = parseFloat(row.Level6) || 0;
+        const level1 = parseFloat(row.Level1) || 0;
+
+        return {
+          Travelled: parseFloat(row.Travelled) || 0,
+          Left: level6 - level2,  // Level6 - Level2
+          Right: level5 - level1, // Level5 - Level1
+        };
+      });
+    }
+    
+    // 다른 탭들은 샘플 데이터 사용
     return [
       { Travelled: 0, Left: 2.1, Right: -1.8 },
       { Travelled: 1, Left: 1.5, Right: -2.2 },
@@ -67,12 +127,19 @@ export function AnalysisLayout({ children }: AnalysisLayoutProps) {
       { Travelled: 3, Left: 0.8, Right: -3.1 },
       { Travelled: 4, Left: 2.7, Right: -1.5 },
     ];
-  }, [pathname]);
+  }, [pathname, correctedData]);
 
-  // 현재 탭의 refLevel 가져오기 (실제로는 각 분석 모듈에서 설정값을 가져와야 함)
+  // 현재 탭의 refLevel 가져오기 (AnalysisSettings에서 설정된 값 사용)
   const currentRefLevel = useMemo(() => {
     const currentTab = getCurrentTab();
-    const refLevels = {
+    // AnalysisSettings에서 설정된 reference level 값을 가져오기 위해 localStorage 사용
+    const storedRefLevel = localStorage.getItem(`analysis-${currentTab}-refLevel`);
+    if (storedRefLevel) {
+      return parseFloat(storedRefLevel);
+    }
+    
+    // 기본값들
+    const defaultRefLevels = {
       'level-deviation': 4,
       'cross-level': 3,
       'longitudinal-level-irregularity': 1.2,
@@ -81,8 +148,35 @@ export function AnalysisLayout({ children }: AnalysisLayoutProps) {
       'straightness': 3,
       'step': 9,
     };
-    return refLevels[currentTab as keyof typeof refLevels] || 0;
-  }, [pathname]);
+    return defaultRefLevels[currentTab as keyof typeof defaultRefLevels] || 0;
+  }, [pathname, settingsVersion]);
+
+  // 현재 탭의 y축 범위 설정 가져오기
+  const currentYAxisSettings = useMemo(() => {
+    const currentTab = getCurrentTab();
+    const yAxisEnabled = localStorage.getItem(`analysis-${currentTab}-yAxisEnabled`) === 'true';
+    const yAxisMin = parseFloat(localStorage.getItem(`analysis-${currentTab}-yAxisMin`) || '0');
+    const yAxisMax = parseFloat(localStorage.getItem(`analysis-${currentTab}-yAxisMax`) || '0');
+    const yAxisTickStep = parseFloat(localStorage.getItem(`analysis-${currentTab}-yAxisTickStep`) || '1');
+    
+    return {
+      enabled: yAxisEnabled,
+      min: yAxisMin,
+      max: yAxisMax,
+      tickStep: yAxisTickStep
+    };
+  }, [pathname, settingsVersion]);
+
+  // y축 범위 설정이 변경될 때마다 차트 옵션 업데이트
+  useEffect(() => {
+    const newChartOptions: AnalysisChartOptions = {
+      yAxisMode: currentYAxisSettings.enabled ? 'manual' : 'auto',
+      yAxisMin: currentYAxisSettings.enabled ? currentYAxisSettings.min : undefined,
+      yAxisMax: currentYAxisSettings.enabled ? currentYAxisSettings.max : undefined,
+      yAxisTickStep: currentYAxisSettings.enabled ? currentYAxisSettings.tickStep : undefined,
+    };
+    setChartOptions(newChartOptions);
+  }, [currentYAxisSettings]);
 
   return (
     <div className="h-[calc(100vh-4rem)] flex flex-col p-6">
