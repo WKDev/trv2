@@ -13,6 +13,7 @@ interface ReadOnlyVirtualizedTableProps {
   rowHeight?: number
   visibleRows?: number
   columnWidths?: { [key: string]: number }
+  columnStyles?: { [key: string]: string }
 }
 
 export const ReadonlyDataTable = memo(({ 
@@ -24,9 +25,11 @@ export const ReadonlyDataTable = memo(({
   selectedRows = new Set(),
   rowHeight = 40,
   visibleRows = 20,
-  columnWidths = {}
+  columnWidths = {},
+  columnStyles = {}
 }: ReadOnlyVirtualizedTableProps) => {
   const [scrollTop, setScrollTop] = useState(0)
+  const [scrollLeft, setScrollLeft] = useState(0)
   const [containerHeight, setContainerHeight] = useState(600)
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null)
   const [selectedRow, setSelectedRow] = useState<number | null>(null)
@@ -58,6 +61,7 @@ export const ReadonlyDataTable = memo(({
   // 스크롤 핸들러
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     setScrollTop(e.currentTarget.scrollTop)
+    setScrollLeft(e.currentTarget.scrollLeft)
   }, [])
 
   // 컨테이너 높이 설정
@@ -114,30 +118,42 @@ export const ReadonlyDataTable = memo(({
     
     // 기본 너비 설정
     const defaultWidths: { [key: string]: number } = {
-      'Index': 60,
-      'Travelled': 80,
-      'Level1': 80,
-      'Level2': 80,
-      'Level3': 80,
-      'Level4': 80,
-      'Level5': 80,
-      'Level6': 80,
-      'Encoder3': 80,
-      'Ang1': 80,
-      'Ang2': 80,
-      'Ang3': 80
+      'Index': 50,
+      'Travelled': 70,
+      'Level1': 60,
+      'Level2': 60,
+      'Level3': 60,
+      'Level4': 60,
+      'Level5': 60,
+      'Level6': 60,
+      'Encoder3': 60,
+      'Ang1': 60,
+      'Ang2': 60,
+      'Ang3': 60,
+      'FLH_ref': 60,
+      'FLH': 60,
+      'FRH_ref': 60,
+      'FRH': 60,
+      'RLH_ref': 60,
+      'RLH': 60,
+      'RRH_ref': 60,
+      'RRH': 60,
+      'PL': 60
     }
     
-    return defaultWidths[column] || 100
+    return defaultWidths[column] || 70
   }
 
   return (
     <div className="overflow-x-auto">
       {/* 고정된 헤더 */}
       <div className="sticky top-0 z-20 bg-background border-b border-border">
-        <div className="flex">
+        <div 
+          className="flex"
+          style={{ transform: `translateX(-${scrollLeft}px)` }}
+        >
           {showCheckboxes && (
-            <div className="p-1 text-left text-xs font-medium text-muted-foreground bg-background flex-shrink-0" style={{ width: '32px' }}>
+            <div className="p-1 text-right text-xs font-medium text-muted-foreground bg-background flex-shrink-0" style={{ width: '32px' }}>
               <input
                 type="checkbox"
                 checked={isAllSelected}
@@ -152,11 +168,11 @@ export const ReadonlyDataTable = memo(({
           {columns.map((col) => (
             <div 
               key={col} 
-              className="p-1 text-left text-xs font-medium text-muted-foreground bg-background cursor-pointer hover:bg-accent/50 select-none flex-shrink-0"
+              className={`p-1 text-right text-xs font-medium text-muted-foreground bg-background cursor-pointer hover:bg-accent/50 select-none flex-shrink-0 ${columnStyles[col] || ''}`}
               onClick={() => handleSort(col)}
               style={{ width: `${getColumnWidth(col)}px` }}
             >
-              <div className="flex items-center gap-1 truncate">
+              <div className="flex items-center justify-end gap-1 truncate">
                 {col}
                 {sortConfig?.key === col && (
                   <span className="text-primary">
@@ -210,10 +226,10 @@ export const ReadonlyDataTable = memo(({
                   {columns.map((col) => (
                     <div
                       key={col}
-                      className="p-1 text-xs text-foreground flex-shrink-0"
+                      className={`p-1 text-xs text-foreground flex-shrink-0 text-right ${columnStyles[col] || ''}`}
                       style={{ width: `${getColumnWidth(col)}px` }}
                     >
-                      <div className="truncate">
+                      <div className="truncate text-right">
                         {formatValueByColumn(col, row[col])}
                       </div>
                     </div>

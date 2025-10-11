@@ -73,6 +73,10 @@ declare global {
       updateOptionsFile: (zipFilePath: string, optionsData: any) => Promise<{success: boolean, message: string}>
       quickUpdateOptionsFile: (zipFilePath: string, optionsData: any) => Promise<{success: boolean, message: string}>
       getDefaultOptions: (section?: string) => Promise<{success: boolean, data?: any, message: string}>
+      
+      // 분석 데이터 전송
+      sendAnalysisData: (data: any) => Promise<{success: boolean, message: string}>
+      getAnalysisData: () => Promise<{success: boolean, data?: any, timestamp?: string, message: string}>
     }
   }
 }

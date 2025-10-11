@@ -9,10 +9,10 @@ import { DescriptionModal } from "@/components/shared/description-modal"
 
 const analysisModules = [
   { id: "level", label: "수준이상", hasVehicleParams: false, hasCycleParam: false },
-  { id: "flatness", label: "평면성이상", hasVehicleParams: true, hasCycleParam: false },
+  { id: "planarity", label: "평면성이상", hasVehicleParams: true, hasCycleParam: false },
   { id: "height", label: "고저", hasVehicleParams: false, hasCycleParam: false },
-  { id: "smoothness", label: "평탄성", hasVehicleParams: false, hasCycleParam: true },
-  { id: "guide-rail", label: "안내레일 내측거리", hasVehicleParams: false, hasCycleParam: false },
+  { id: "longitudinal-level-irregularity", label: "평탄성", hasVehicleParams: false, hasCycleParam: true },
+  { id: "guiderail-clearance", label: "안내레일 내측거리", hasVehicleParams: false, hasCycleParam: false },
   { id: "straightness", label: "직진도", hasVehicleParams: false, hasCycleParam: false },
   { id: "connection", label: "연결부단차", hasVehicleParams: false, hasCycleParam: false, hasRefLevel: false },
 ]

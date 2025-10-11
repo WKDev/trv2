@@ -313,10 +313,12 @@ export const ChartJSLineChart = memo(({
             size: 12
           },
           callbacks: {
+
+            
             title: (context) => {
               const dataIndex = context[0].dataIndex
               const label = optimizedData[dataIndex] ? formatTravelled(optimizedData[dataIndex].Travelled || 0) : ''
-              return `Travelled: ${label}`
+              return `Index: ${dataIndex + 1} | STA: ${label}`
             },
             label: (context) => {
               const label = context.dataset.label || ''

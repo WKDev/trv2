@@ -758,6 +758,37 @@ ipcMain.handle('save-csv-files', async (event, originalZipPath, csvData) => {
   }
 });
 
+// 분석 데이터 저장/로드
+let analysisData = null;
+
+ipcMain.handle('send-analysis-data', async (event, data) => {
+  try {
+    analysisData = data;
+    console.log('분석 데이터가 메인 프로세스에 저장되었습니다:', {
+      timestamp: new Date().toISOString(),
+      dataKeys: Object.keys(data || {}),
+      dataSize: JSON.stringify(data).length
+    });
+    return { success: true, message: '분석 데이터가 성공적으로 저장되었습니다.' };
+  } catch (error) {
+    console.error('분석 데이터 저장 중 오류:', error);
+    return { success: false, message: `분석 데이터 저장 중 오류가 발생했습니다: ${error.message}` };
+  }
+});
+
+ipcMain.handle('get-analysis-data', async (event) => {
+  try {
+    return { 
+      success: true, 
+      data: analysisData,
+      timestamp: analysisData ? new Date().toISOString() : null
+    };
+  } catch (error) {
+    console.error('분석 데이터 로드 중 오류:', error);
+    return { success: false, message: `분석 데이터 로드 중 오류가 발생했습니다: ${error.message}` };
+  }
+});
+
 // data_raw.csv에서 data.csv로 복원
 ipcMain.handle('restore-from-data-raw', async (event, extractPath) => {
   try {

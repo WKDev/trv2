@@ -23,7 +23,7 @@ const moduleContent: Record<
     calculation: ["1. 수준이상 계산 단계 1 설명", "2. 수준이상 계산 단계 2 설명", "3. 수준이상 계산 단계 3 설명"],
     notes: "여기에 수준이상 분석에 대한 추가 참고 사항을 작성하세요.",
   },
-  flatness: {
+  planarity: {
     title: "평면성이상",
     overview: "여기에 평면성이상 분석 항목에 대한 개요를 작성하세요.",
     calculation: ["1. 평면성이상 계산 단계 1 설명", "2. 평면성이상 계산 단계 2 설명", "3. 평면성이상 계산 단계 3 설명"],
@@ -35,13 +35,13 @@ const moduleContent: Record<
     calculation: ["1. 고저 계산 단계 1 설명", "2. 고저 계산 단계 2 설명", "3. 고저 계산 단계 3 설명"],
     notes: "여기에 고저 분석에 대한 추가 참고 사항을 작성하세요.",
   },
-  smoothness: {
+  longitudinal_level_irregularity: {
     title: "평탄성",
     overview: "여기에 평탄성 분석 항목에 대한 개요를 작성하세요.",
     calculation: ["1. 평탄성 계산 단계 1 설명", "2. 평탄성 계산 단계 2 설명", "3. 평탄성 계산 단계 3 설명"],
     notes: "여기에 평탄성 분석에 대한 추가 참고 사항을 작성하세요.",
   },
-  "guide-rail": {
+  "guiderail-clearance": {
     title: "안내레일 내측거리",
     overview: "여기에 안내레일 내측거리 분석 항목에 대한 개요를 작성하세요.",
     calculation: [

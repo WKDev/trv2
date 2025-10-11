@@ -45,6 +45,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // ZIP 파일 처리
   selectZipFile: () => ipcRenderer.invoke('select-zip-file'),
+  
+  // 분석 데이터 전송
+  sendAnalysisData: (data) => ipcRenderer.invoke('send-analysis-data', data),
+  getAnalysisData: () => ipcRenderer.invoke('get-analysis-data'),
   validateZipFile: (filePath) => ipcRenderer.invoke('validate-zip-file', filePath),
   validateZipStructure: (filePath) => ipcRenderer.invoke('validate-zip-structure', filePath),
   extractZipFile: (zipFilePath) => ipcRenderer.invoke('extract-zip-file', zipFilePath),

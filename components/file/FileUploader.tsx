@@ -403,6 +403,25 @@ export function FileUploader() {
       return
     }
 
+    // 유효성 검증
+    if (!metadata.testername || metadata.testername.trim() === '') {
+      toast({
+        title: "입력 오류",
+        description: "공사명을 입력해주세요.",
+        variant: "destructive"
+      })
+      return
+    }
+
+    if (!metadata.line || metadata.line.trim() === '' || parseFloat(metadata.line) < 0) {
+      toast({
+        title: "입력 오류",
+        description: "STA 값을 올바르게 입력해주세요.",
+        variant: "destructive"
+      })
+      return
+    }
+
     // Electron API 사용 가능 여부 확인
     if (typeof window === 'undefined' || !window.electronAPI) {
       console.error('Electron API not available:', { 
@@ -606,19 +625,22 @@ export function FileUploader() {
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="time" className="text-foreground">
-                    시간 (time)
+                    시간
                   </Label>
                   <Input
                     id="time"
-                    value={metadata.time}
-                    onChange={(e) => handleMetadataChange("time", e.target.value)}
+                    type="datetime-local"
+                    value={metadata.time ? new Date(parseInt(metadata.time) * 1000).toISOString().slice(0, 16) : ""}
+                    onChange={(e) => {
+                      const timestamp = Math.floor(new Date(e.target.value).getTime() / 1000).toString()
+                      handleMetadataChange("time", timestamp)
+                    }}
                     className="bg-background"
-                    placeholder="1759230044"
                   />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="testername" className="text-foreground">
-                    테스터명 (testername)
+                    공사명
                   </Label>
                   <Input
                     id="testername"
@@ -630,97 +652,145 @@ export function FileUploader() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="line" className="text-foreground">
-                    라인 (line)
+                    STA
                   </Label>
-                  <Input
-                    id="line"
-                    value={metadata.line}
-                    onChange={(e) => handleMetadataChange("line", e.target.value)}
-                    className="bg-background"
-                    placeholder="0"
-                  />
+                  <div className="flex items-center space-x-2">
+                    <Input
+                      id="line-a"
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={metadata.line ? Math.floor(parseFloat(metadata.line) / 1000) : 0}
+                      onChange={(e) => {
+                        const a = parseInt(e.target.value) || 0
+                        const currentB = metadata.line ? Math.floor((parseFloat(metadata.line) % 1000)) : 0
+                        const currentC = metadata.line ? Math.round(((parseFloat(metadata.line) % 1000) - Math.floor(parseFloat(metadata.line) % 1000)) * 100) : 0
+                        const newValue = (a * 1000 + currentB + currentC / 100).toString()
+                        handleMetadataChange("line", newValue)
+                      }}
+                      className="bg-background w-16"
+                      placeholder="0"
+                    />
+                    <span className="text-muted-foreground">+</span>
+                    <Input
+                      id="line-b"
+                      type="number"
+                      min="0"
+                      max="999"
+                      step="1"
+                      value={metadata.line ? Math.floor(parseFloat(metadata.line) % 1000).toString().padStart(3, '0') : '000'}
+                      onChange={(e) => {
+                        const b = parseInt(e.target.value) || 0
+                        const currentA = metadata.line ? Math.floor(parseFloat(metadata.line) / 1000) : 0
+                        const currentC = metadata.line ? Math.round(((parseFloat(metadata.line) % 1000) - Math.floor(parseFloat(metadata.line) % 1000)) * 100) : 0
+                        const newValue = (currentA * 1000 + b + currentC / 100).toString()
+                        handleMetadataChange("line", newValue)
+                      }}
+                      className="bg-background w-24"
+                      placeholder="000"
+                    />
+                    <span className="text-muted-foreground">.</span>
+                    <Input
+                      id="line-c"
+                      type="number"
+                      min="0"
+                      max="99"
+                      step="1"
+                      value={metadata.line ? Math.round(((parseFloat(metadata.line) % 1000) - Math.floor(parseFloat(metadata.line) % 1000)) * 100).toString().padStart(2, '0') : '00'}
+                      onChange={(e) => {
+                        const c = parseInt(e.target.value) || 0
+                        const currentA = metadata.line ? Math.floor(parseFloat(metadata.line) / 1000) : 0
+                        const currentB = metadata.line ? Math.floor(parseFloat(metadata.line) % 1000) : 0
+                        const newValue = (currentA * 1000 + currentB + c / 100).toString()
+                        handleMetadataChange("line", newValue)
+                      }}
+                      className="bg-background w-20"
+                      placeholder="00"
+                    />
+                    <span className="text-muted-foreground">m</span>
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="recording_type" className="text-foreground">
-                    기록 유형 (recording_type)
+                    기록 유형
                   </Label>
                   <Input
                     id="recording_type"
                     value={metadata.recording_type}
-                    onChange={(e) => handleMetadataChange("recording_type", e.target.value)}
-                    className="bg-background"
+                    readOnly
+                    className="bg-muted text-muted-foreground"
                     placeholder="meter"
                   />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="recording_interval" className="text-foreground">
-                    기록 간격 (recording_interval)
+                    측정 주기
                   </Label>
                   <Input
                     id="recording_interval"
                     value={metadata.recording_interval}
-                    onChange={(e) => handleMetadataChange("recording_interval", e.target.value)}
-                    className="bg-background"
+                    readOnly
+                    className="bg-muted text-muted-foreground"
                     placeholder="0.1"
                   />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="wheel_diameter" className="text-foreground">
-                    휠 직경 (wheel_diameter)
+                    휠 직경
                   </Label>
                   <Input
                     id="wheel_diameter"
                     value={metadata.wheel_diameter}
-                    onChange={(e) => handleMetadataChange("wheel_diameter", e.target.value)}
-                    className="bg-background"
+                    readOnly
+                    className="bg-muted text-muted-foreground"
                     placeholder="150"
                   />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="enc_ppr" className="text-foreground">
-                    인코더 PPR (enc_ppr)
+                    엔코더 PPR
                   </Label>
                   <Input
                     id="enc_ppr"
                     value={metadata.enc_ppr}
-                    onChange={(e) => handleMetadataChange("enc_ppr", e.target.value)}
-                    className="bg-background"
+                    readOnly
+                    className="bg-muted text-muted-foreground"
                     placeholder="1250"
                   />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="device_type" className="text-foreground">
-                    장치 유형 (device_type)
+                    장치 유형
                   </Label>
                   <Input
                     id="device_type"
                     value={metadata.device_type}
-                    onChange={(e) => handleMetadataChange("device_type", e.target.value)}
-                    className="bg-background"
+                    readOnly
+                    className="bg-muted text-muted-foreground"
                     placeholder="measurer"
                   />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="level_sensor" className="text-foreground">
-                    레벨 센서 (level_sensor)
+                    변위센서
                   </Label>
                   <Input
                     id="level_sensor"
                     value={metadata.level_sensor}
-                    onChange={(e) => handleMetadataChange("level_sensor", e.target.value)}
-                    className="bg-background"
+                    readOnly
+                    className="bg-muted text-muted-foreground"
                     placeholder="LAT52-200"
                   />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="encoder_sensor" className="text-foreground">
-                    인코더 센서 (encoder_sensor)
+                    엔코더
                   </Label>
                   <Input
                     id="encoder_sensor"
                     value={metadata.encoder_sensor}
-                    onChange={(e) => handleMetadataChange("encoder_sensor", e.target.value)}
-                    className="bg-background"
+                    readOnly
+                    className="bg-muted text-muted-foreground"
                     placeholder="WPI-M-1250-L"
                   />
                 </div>

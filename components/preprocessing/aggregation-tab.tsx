@@ -20,7 +20,9 @@ const AggregationTab = memo(() => {
     aggregationSettings,
     updateAggregationSettings,
     aggregationTabEntered,
-    setAggregationTabEntered
+    setAggregationTabEntered,
+    useStaOffset,
+    applyStaOffsetToData
   } = useData()
 
   // Web Worker 훅 사용
@@ -224,7 +226,7 @@ const AggregationTab = memo(() => {
             </CardHeader>
             <CardContent>
               <ReadonlyDataTable
-                data={aggregatedData.map((row: any, index: number) => ({
+                data={(useStaOffset ? applyStaOffsetToData(aggregatedData) : aggregatedData).map((row: any, index: number) => ({
                   id: index + 1,
                   selected: aggregatedSelectedRows.has(index),
                   index: index + 1,

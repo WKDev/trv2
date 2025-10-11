@@ -12,6 +12,8 @@ import { RotateCcw, Check, AlertCircle } from "lucide-react"
 import { useLocalStorage } from "@/hooks/use-local-storage"
 import { useElectronStorage } from "@/hooks/use-electron-storage"
 import { useData } from "@/contexts/data-context"
+import { GuideRailClearancePage } from "./GuideRailClearancePage"
+import { StraightnessPage } from "./StraightnessPage"
 
 // Sample data
 const sampleData = Array.from({ length: 50 }, (_, i) => ({
@@ -42,7 +44,7 @@ const getDefaultRefLevel = (moduleId: string): number => {
     "cross-level": 3,
     "longitudinal-level-irregularity": 1.2,
     "guiderail-clearance": 10,
-    "alignment": 3,
+    "planarity": 3,
     "straightness": 3,
     "step": 9,
   }
@@ -55,7 +57,7 @@ const getRefLevelLabel = (moduleId: string): string => {
     "cross-level": "±",
     "longitudinal-level-irregularity": "σ ≤",
     "guiderail-clearance": "<",
-    "alignment": "<",
+    "planarity": "<",
     "straightness": "<",
     "step": "<",
   }
@@ -68,7 +70,7 @@ const getRefLevelUnit = (moduleId: string): string => {
     "cross-level": "mm / 3m",
     "longitudinal-level-irregularity": "mm",
     "guiderail-clearance": "mm",
-    "alignment": "mm / 3m",
+    "planarity": "mm / 3m",
     "straightness": "mm / 3m",
     "step": "mm",
   }
@@ -82,16 +84,19 @@ export function AnalysisModule({
   hasCycleParam = false,
   hasRefLevel = true,
 }: AnalysisModuleProps) {
-  const { aggregatedData, hasData } = useData()
+  const { aggregatedData, correctedData, hasData, useStaOffset, applyStaOffsetToData, isAnalysisProcessing, analysisProgress, analysisError } = useData()
   const [data, setData] = useState(tableData)
   const [editingCell, setEditingCell] = useState<{ rowId: number; field: string } | null>(null)
   const [editValue, setEditValue] = useState("")
 
-  // Context에서 집계된 데이터를 가져와서 테이블 데이터로 변환
+  // Context에서 보정된 데이터를 가져와서 테이블 데이터로 변환
   useEffect(() => {
-    if (hasData() && aggregatedData && aggregatedData.length > 0) {
-      // 테이블 데이터를 집계된 데이터로 업데이트 (Level1~Level6 포함)
-      const tableDataFromAggregated = aggregatedData.slice(0, 10).map((row: any, index: number) => ({
+    if (hasData() && correctedData && correctedData.length > 0) {
+      // STA offset 적용된 데이터 사용
+      const dataWithOffset = useStaOffset ? applyStaOffsetToData(correctedData) : correctedData
+      
+      // 테이블 데이터를 보정된 데이터로 업데이트 (Level1~Level6 포함)
+      const tableDataFromCorrected = dataWithOffset.slice(0, 10).map((row: any, index: number) => ({
         id: index + 1,
         selected: true,
         index: index + 1,
@@ -102,9 +107,9 @@ export function AnalysisModule({
         value5: row.Level5 || 0,
         value6: row.Level6 || 0,
       }))
-      setData(tableDataFromAggregated)
+      setData(tableDataFromCorrected)
     }
-  }, [hasData, aggregatedData])
+  }, [hasData, correctedData, useStaOffset])
 
   const [refLevel, setRefLevel] = useLocalStorage({
     key: `analysis-${moduleId}-refLevel`,
@@ -227,6 +232,16 @@ export function AnalysisModule({
     setRefLevel(getDefaultRefLevel(moduleId))
   }
 
+  // 안내레일 내측거리 모듈의 경우 별도 페이지 렌더링
+  if (moduleId === "guiderail-clearance") {
+    return <GuideRailClearancePage />
+  }
+
+  // 직진도 모듈의 경우 AnalysisLayout에서 처리되므로 여기서는 렌더링하지 않음
+  if (moduleId === "straightness") {
+    return null
+  }
+
   // 데이터가 없을 때 표시할 메시지
   if (!hasData()) {
     return (
@@ -253,19 +268,31 @@ export function AnalysisModule({
     <div className="space-y-6">
       <Card className="bg-card border-border shadow-sm">
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-foreground">{title} 분석 결과</CardTitle>
-            <div className="flex gap-2">
-              <Button size="sm" variant="outline">
-                <RotateCcw className="mr-2 h-4 w-4" />
-                초기화
-              </Button>
-              <Button size="sm" className="bg-primary hover:bg-primary/90">
-                <Check className="mr-2 h-4 w-4" />
-                수정사항 적용
-              </Button>
+          <CardTitle className="text-foreground">{title} 분석 결과</CardTitle>
+          {/* 분석 진행 상태 표시 */}
+          {(isAnalysisProcessing || analysisError) && (
+            <div className="mt-2">
+              {isAnalysisProcessing && (
+                <div className="flex items-center space-x-2 text-sm text-blue-600">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                  <span>
+                    {analysisProgress?.message || '분석 중...'}
+                    {analysisProgress?.progress !== undefined && (
+                      <span className="ml-2">
+                        ({Math.round(analysisProgress.progress * 100)}%)
+                      </span>
+                    )}
+                  </span>
+                </div>
+              )}
+              {analysisError && (
+                <div className="text-sm text-red-600">
+                  <AlertCircle className="inline h-4 w-4 mr-1" />
+                  분석 오류: {analysisError}
+                </div>
+              )}
             </div>
-          </div>
+          )}
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">

@@ -6,7 +6,11 @@ import { useRouter, usePathname } from 'next/navigation';
 import { AnalysisChart, AnalysisChartOptions } from './AnalysisChart';
 import { useData } from '@/contexts/data-context';
 import { AnalysisSettings } from './AnalysisSettings';
+import { PlanaritySettings } from './PlanaritySettings';
 import { useLocalStorage } from '@/hooks/use-local-storage';
+import { CalculationDescriptionModal } from './CalculationDescriptionModal';
+import { StraightnessPage } from './StraightnessPage';
+import { StepPage } from './StepPage';
 
 interface AnalysisLayoutProps {
   children: ReactNode;
@@ -22,6 +26,28 @@ export function AnalysisLayout({ children }: AnalysisLayoutProps) {
   // localStorage 변경 감지를 위한 상태
   const [settingsVersion, setSettingsVersion] = useState(0);
   
+  // 분석 탭 진입 감지
+  useEffect(() => {
+    console.log('🔄 AnalysisLayout 마운트 - 분석 탭 진입 감지');
+    setAnalysisTabEntered(true);
+    
+    return () => {
+      console.log('🔄 AnalysisLayout 언마운트 - 분석 탭 이탈');
+      setAnalysisTabEntered(false);
+      
+      // 분석 탭에서 나갈 때 데이터를 메인 프로세스로 전송
+      sendAnalysisDataToMain().then((result) => {
+        if (result.success) {
+          console.log('✅ 분석 탭 이탈 시 데이터 전송 완료');
+        } else {
+          console.error('❌ 분석 탭 이탈 시 데이터 전송 실패:', result.message);
+        }
+      }).catch((error) => {
+        console.error('❌ 분석 탭 이탈 시 데이터 전송 중 오류:', error);
+      });
+    };
+  }, []);
+
   // localStorage 변경 감지
   useEffect(() => {
     const handleStorageChange = () => {
@@ -63,7 +89,25 @@ export function AnalysisLayout({ children }: AnalysisLayoutProps) {
   const { 
     selectedRows,
     aggregatedSelectedRows,
-    correctedData
+    levelDeviationData,
+    crossLevelData,
+    longitudinalLevelIrregularityData,
+    straightnessData,
+    guideRailClearanceData,
+    stepData,
+    planarityData,
+    useStaOffset,
+    staOffset,
+    applyStaOffsetToData,
+    setAnalysisTabEntered,
+    rawData,
+    outlierRemovedData,
+    aggregatedData,
+    correctedData,
+    isAggregating,
+    aggregationProgress,
+    aggregationError,
+    sendAnalysisDataToMain
   } = useData();
 
   const getCurrentTab = () => {
@@ -71,10 +115,23 @@ export function AnalysisLayout({ children }: AnalysisLayoutProps) {
     if (pathname.includes('/cross-level')) return 'cross-level';
     if (pathname.includes('/longitudinal-level-irregularity')) return 'longitudinal-level-irregularity';
     if (pathname.includes('/guiderail-clearance')) return 'guiderail-clearance';
-    if (pathname.includes('/alignment')) return 'alignment';
+    if (pathname.includes('/planarity')) return 'planarity';
     if (pathname.includes('/straightness')) return 'straightness';
     if (pathname.includes('/step')) return 'step';
     return 'level-deviation';
+  };
+
+  const getCurrentTabTitle = (tab: string) => {
+    const titles: Record<string, string> = {
+      'level-deviation': '수준 이상',
+      'planarity': '평면성이상',
+      'cross-level': '고저',
+      'longitudinal-level-irregularity': '평탄성',
+      'guiderail-clearance': '안내레일 내측거리',
+      'straightness': '직진도',
+      'step': '연결부 단차',
+    };
+    return titles[tab] || '분석';
   };
 
   const handleTabChange = (value: string) => {
@@ -83,6 +140,9 @@ export function AnalysisLayout({ children }: AnalysisLayoutProps) {
       to: value,
       timestamp: new Date().toISOString()
     });
+    
+    // 분석 탭 진입 감지
+    setAnalysisTabEntered(true);
     
     router.push(`/analysis/${value}`);
   };
@@ -103,31 +163,100 @@ export function AnalysisLayout({ children }: AnalysisLayoutProps) {
   const analysisChartData = useMemo(() => {
     const currentTab = getCurrentTab();
     
-    // 수준 이상 탭의 경우 실제 데이터 계산
-    if (currentTab === 'level-deviation' && correctedData && correctedData.length > 0) {
-      return correctedData.map((row: any) => {
-        const level2 = parseFloat(row.Level2) || 0;
-        const level5 = parseFloat(row.Level5) || 0;
-        const level6 = parseFloat(row.Level6) || 0;
-        const level1 = parseFloat(row.Level1) || 0;
-
-        return {
-          Travelled: parseFloat(row.Travelled) || 0,
-          Left: level6 - level2,  // Level6 - Level2
-          Right: level5 - level1, // Level5 - Level1
-        };
-      });
+    // 수준 이상 탭의 경우 levelDeviationData 사용
+    if (currentTab === 'level-deviation' && levelDeviationData && levelDeviationData.length > 0) {
+      const data = levelDeviationData.map((row: any) => ({
+        Travelled: row.Travelled,
+        Left: row.Left,
+        Right: row.Right,
+      }));
+      
+      // STA offset 적용
+      return useStaOffset ? applyStaOffsetToData(data) : data;
+    }
+    
+    // 고저차 탭의 경우 crossLevelData 사용
+    if (currentTab === 'cross-level' && crossLevelData && crossLevelData.length > 0) {
+      const data = crossLevelData.map((row: any) => ({
+        Travelled: row.Travelled,
+        Left: row.Left,
+        Right: row.Right,
+      }));
+      
+      // STA offset 적용
+      return useStaOffset ? applyStaOffsetToData(data) : data;
+    }
+    
+    // 평탄성 탭의 경우 longitudinalLevelIrregularityData 사용
+    if (currentTab === 'longitudinal-level-irregularity' && longitudinalLevelIrregularityData && longitudinalLevelIrregularityData.length > 0) {
+      const data = longitudinalLevelIrregularityData.map((row: any) => ({
+        Travelled: row.Travelled,
+        Left: row.Level2,  // Level2를 Left로 매핑 (Level2의 구간별 표준편차)
+        Right: row.Level1, // Level1을 Right로 매핑 (Level1의 구간별 표준편차)
+      }));
+      
+      // STA offset 적용
+      return useStaOffset ? applyStaOffsetToData(data) : data;
+    }
+    
+    // 직진도 탭의 경우 straightnessData 사용 (Level3=Right, Level4=Left)
+    if (currentTab === 'straightness' && straightnessData && straightnessData.length > 0) {
+      const data = straightnessData.map((row: any) => ({
+        Travelled: row.Travelled,
+        Left: row.Level4,  // Level4를 Left로 매핑 (Level4의 구간별 표준편차)
+        Right: row.Level3, // Level3을 Right로 매핑 (Level3의 구간별 표준편차)
+      }));
+      
+      // STA offset 적용
+      return useStaOffset ? applyStaOffsetToData(data) : data;
+    }
+    
+    // 안내레일 내측거리 탭의 경우 guideRailClearanceData 사용 (GC만 표시)
+    if (currentTab === 'guiderail-clearance' && guideRailClearanceData && guideRailClearanceData.length > 0) {
+      const data = guideRailClearanceData.map((row: any) => ({
+        Travelled: row.Travelled,
+        y: row.GC,        // GC 값을 y로 매핑하여 단일 라인으로 표시
+      }));
+      
+      // STA offset 적용
+      return useStaOffset ? applyStaOffsetToData(data) : data;
+    }
+    
+    // 연결부 단차 탭의 경우 stepData 사용
+    console.log('🔍 AnalysisLayout step 탭 데이터 확인:', {
+      currentTab,
+      stepDataLength: stepData?.length || 0,
+      stepDataSample: stepData?.slice(0, 2)
+    })
+    
+    // 평면성 탭의 경우 planarityData 사용
+    if (currentTab === 'planarity' && planarityData && planarityData.length > 0) {
+      const data = planarityData.map((row: any) => ({
+        Travelled: row.Travelled,
+        y: row.PL, // 평면성 값
+      }));
+      
+      // STA offset 적용
+      return useStaOffset ? applyStaOffsetToData(data) : data;
+    }
+    
+    // step 탭은 StepPage에서 직접 데이터를 처리하므로 여기서는 처리하지 않음
+    if (currentTab === 'step') {
+      return []; // 빈 배열 반환하여 StepPage에서 처리하도록 함
     }
     
     // 다른 탭들은 샘플 데이터 사용
-    return [
+    const sampleData = [
       { Travelled: 0, Left: 2.1, Right: -1.8 },
       { Travelled: 1, Left: 1.5, Right: -2.2 },
       { Travelled: 2, Left: 3.2, Right: -0.9 },
       { Travelled: 3, Left: 0.8, Right: -3.1 },
       { Travelled: 4, Left: 2.7, Right: -1.5 },
     ];
-  }, [pathname, correctedData]);
+    
+    // STA offset 적용
+    return useStaOffset ? applyStaOffsetToData(sampleData) : sampleData;
+  }, [pathname, levelDeviationData, crossLevelData, longitudinalLevelIrregularityData, straightnessData, guideRailClearanceData, stepData, planarityData, settingsVersion, useStaOffset, staOffset]);
 
   // 현재 탭의 refLevel 가져오기 (AnalysisSettings에서 설정된 값 사용)
   const currentRefLevel = useMemo(() => {
@@ -144,7 +273,7 @@ export function AnalysisLayout({ children }: AnalysisLayoutProps) {
       'cross-level': 3,
       'longitudinal-level-irregularity': 1.2,
       'guiderail-clearance': 10,
-      'alignment': 3,
+      'planarity': 3,
       'straightness': 3,
       'step': 9,
     };
@@ -178,59 +307,138 @@ export function AnalysisLayout({ children }: AnalysisLayoutProps) {
     setChartOptions(newChartOptions);
   }, [currentYAxisSettings]);
 
+  // 전처리 상태 확인
+  const preprocessingStatus = useMemo(() => {
+    if (rawData.length === 0) return { status: 'no-data', message: '데이터가 없습니다' }
+    if (outlierRemovedData.length === 0) return { status: 'processing', message: '이상치 처리 중...' }
+    if (isAggregating) return { status: 'processing', message: `집계 처리 중... ${aggregationProgress ? `${aggregationProgress.progress}%` : ''}` }
+    if (aggregatedData.length === 0) return { status: 'processing', message: '집계 처리 중...' }
+    if (correctedData.length === 0) return { status: 'processing', message: 'Scale & Offset 처리 중...' }
+    return { status: 'completed', message: '전처리 완료' }
+  }, [rawData, outlierRemovedData, aggregatedData, correctedData, isAggregating, aggregationProgress]);
+
   return (
     <div className="h-[calc(100vh-4rem)] flex flex-col p-6">
       <Tabs value={getCurrentTab()} onValueChange={handleTabChange} className="flex-1 flex flex-col h-full">
-        <TabsList className="grid w-full grid-cols-7 mb-4 flex-shrink-0">
-          <TabsTrigger value="level-deviation">수준 이상</TabsTrigger>
-          <TabsTrigger value="cross-level">고저</TabsTrigger>
-          <TabsTrigger value="longitudinal-level-irregularity">평탄성</TabsTrigger>
-          <TabsTrigger value="guiderail-clearance">안내레일 내측거리</TabsTrigger>
-          <TabsTrigger value="alignment">정렬</TabsTrigger>
-          <TabsTrigger value="straightness">직진도</TabsTrigger>
-          <TabsTrigger value="step">연결부 단차</TabsTrigger>
-        </TabsList>
+        <div className="flex items-center justify-between mb-4 flex-shrink-0">
+          <div className="flex items-center gap-4">
+            <TabsList className="grid grid-cols-7">
+              <TabsTrigger value="level-deviation">수준 이상</TabsTrigger>
+              <TabsTrigger value="planarity">평면성 이상</TabsTrigger>
+              <TabsTrigger value="cross-level">고저</TabsTrigger>
+              <TabsTrigger value="longitudinal-level-irregularity">평탄성</TabsTrigger>
+              <TabsTrigger value="guiderail-clearance">안내레일 내측거리</TabsTrigger>
+              <TabsTrigger value="straightness">직진도</TabsTrigger>
+              <TabsTrigger value="step">연결부 단차</TabsTrigger>
+            </TabsList>
+            
+            {/* 전처리 상태 표시 */}
+            {preprocessingStatus.status === 'processing' && (
+              <div className="flex items-center gap-2 px-3 py-1 bg-blue-50 border border-blue-200 rounded-md">
+                <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                <span className="text-sm text-blue-700">{preprocessingStatus.message}</span>
+              </div>
+            )}
+          </div>
+          
+          <CalculationDescriptionModal 
+            moduleId={getCurrentTab()} 
+            title={getCurrentTabTitle(getCurrentTab())} 
+          />
+        </div>
         
         <div className="flex-1 flex min-h-0 h-full">
           <div className="flex-1 pr-4 min-w-0 overflow-y-auto h-full">
-            {/* 분석 차트 섹션 */}
-            <div className="mb-6">
-              <AnalysisChart
-                title={`${getCurrentTab().replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())} Analysis Chart`}
-                data={analysisChartData}
-                refLevel={currentRefLevel}
-                selectedRows={currentSelectedRows}
-                chartOptions={chartOptions}
-                onChartOptionsChange={setChartOptions}
-              />
-            </div>
+            {/* 전처리 상태에 따른 메시지 표시 */}
+            {preprocessingStatus.status === 'no-data' && (
+              <div className="flex items-center justify-center py-12 text-muted-foreground">
+                <div className="text-center">
+                  <p className="text-lg font-medium">데이터를 먼저 로드해주세요</p>
+                  <p className="text-sm mt-2">파일 열기 탭에서 ZIP 파일을 선택하세요</p>
+                </div>
+              </div>
+            )}
             
-            {/* 탭별 콘텐츠 */}
-            <TabsContent value="level-deviation" className="h-full m-0">
-              {children}
-            </TabsContent>
-            <TabsContent value="cross-level" className="h-full m-0">
-              {children}
-            </TabsContent>
-            <TabsContent value="longitudinal-level-irregularity" className="h-full m-0">
-              {children}
-            </TabsContent>
-            <TabsContent value="guiderail-clearance" className="h-full m-0">
-              {children}
-            </TabsContent>
-            <TabsContent value="alignment" className="h-full m-0">
-              {children}
-            </TabsContent>
-            <TabsContent value="straightness" className="h-full m-0">
-              {children}
-            </TabsContent>
-            <TabsContent value="step" className="h-full m-0">
-              {children}
-            </TabsContent>
+            {preprocessingStatus.status === 'processing' && (
+              <div className="flex items-center justify-center py-12 text-muted-foreground">
+                <div className="text-center">
+                  <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-500 rounded-full animate-spin mx-auto mb-4"></div>
+                  <p className="text-lg font-medium">{preprocessingStatus.message}</p>
+                  {isAggregating && aggregationProgress && (
+                    <div className="mt-4 w-64">
+                      <div className="flex items-center justify-between text-sm mb-2">
+                        <span>집계 진행률</span>
+                        <span>{aggregationProgress.progress}%</span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div 
+                          className="bg-blue-500 h-2 rounded-full transition-all duration-300" 
+                          style={{ width: `${aggregationProgress.progress}%` }}
+                        ></div>
+                      </div>
+                      <p className="text-xs mt-2">
+                        처리된 구간: {aggregationProgress.processed} / {aggregationProgress.total}
+                      </p>
+                    </div>
+                  )}
+                  {aggregationError && (
+                    <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-md">
+                      <p className="text-sm text-red-600">
+                        집계 오류: {aggregationError}
+                      </p>
+                    </div>
+                  )}
+                  <p className="text-sm mt-2">잠시만 기다려주세요...</p>
+                </div>
+              </div>
+            )}
+            
+            {/* 분석 차트 섹션 - 전처리가 완료된 경우에만 표시 (step 탭 제외) */}
+            {preprocessingStatus.status === 'completed' && getCurrentTab() !== 'step' && (
+              <div className="mb-6">
+                <AnalysisChart
+                  title={`${getCurrentTab().replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())} Analysis Chart`}
+                  moduleId={getCurrentTab()}
+                  data={analysisChartData}
+                  refLevel={currentRefLevel}
+                  selectedRows={currentSelectedRows}
+                  chartOptions={chartOptions}
+                  onChartOptionsChange={setChartOptions}
+                />
+              </div>
+            )}
+            
+            {/* 탭별 콘텐츠 - 전처리가 완료된 경우에만 표시 */}
+            {preprocessingStatus.status === 'completed' && (
+              <>
+                <TabsContent value="level-deviation" className="h-full m-0">
+                  {children}
+                </TabsContent>
+                <TabsContent value="cross-level" className="h-full m-0">
+                  {children}
+                </TabsContent>
+                <TabsContent value="planarity" className="h-full m-0">
+                  {children}
+                </TabsContent>
+                <TabsContent value="longitudinal-level-irregularity" className="h-full m-0">
+                  {children}
+                </TabsContent>
+                <TabsContent value="guiderail-clearance" className="h-full m-0">
+                  {children}
+                </TabsContent>
+                
+                <TabsContent value="straightness" className="h-full m-0">
+                  <StraightnessPage />
+                </TabsContent>
+                <TabsContent value="step" className="h-full m-0">
+                  <StepPage />
+                </TabsContent>
+              </>
+            )}
           </div>
           
           <div className="w-80 min-w-80 border-l pl-4 flex-shrink-0 overflow-y-auto h-full">
-            <AnalysisSidebar />
+            {preprocessingStatus.status === 'completed' && <AnalysisSidebar />}
           </div>
         </div>
       </Tabs>
@@ -257,8 +465,8 @@ function AnalysisSidebar() {
     return <GuideRailClearanceSidebar />;
   }
   
-  if (pathname.includes('/alignment')) {
-    return <AlignmentSidebar />;
+  if (pathname.includes('/planarity')) {
+    return <PlanaritySidebar />;
   }
   
   if (pathname.includes('/straightness')) {
@@ -275,21 +483,6 @@ function AnalysisSidebar() {
 function LevelDeviationSidebar() {
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold">수준 이상 분석</h3>
-      </div>
-      <p className="text-sm text-muted-foreground">
-        레벨 센서 데이터의 이상치를 분석합니다.
-      </p>
-      <div className="space-y-2">
-        <div className="text-sm font-medium">분석 항목</div>
-        <ul className="text-sm text-muted-foreground space-y-1">
-          <li>• 레벨 센서 이상치 탐지</li>
-          <li>• 임계값 기반 분석</li>
-          <li>• 통계적 분석</li>
-        </ul>
-      </div>
-      
       <AnalysisSettings 
         moduleId="level-deviation" 
         title="수준 이상" 
@@ -299,24 +492,22 @@ function LevelDeviationSidebar() {
   );
 }
 
+function PlanaritySidebar() {
+  return (
+    <div className="space-y-4">
+      <PlanaritySettings />
+      <AnalysisSettings 
+        moduleId="planarity" 
+        title="평면성 이상" 
+        hasLeftRight={true}
+      />
+    </div>
+  );
+}
+
 function CrossLevelSidebar() {
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold">고저 분석</h3>
-      </div>
-      <p className="text-sm text-muted-foreground">
-        고저 센서 데이터를 분석합니다.
-      </p>
-      <div className="space-y-2">
-        <div className="text-sm font-medium">분석 항목</div>
-        <ul className="text-sm text-muted-foreground space-y-1">
-          <li>• 고저 센서 데이터 분석</li>
-          <li>• 편차 계산</li>
-          <li>• 품질 평가</li>
-        </ul>
-      </div>
-      
       <AnalysisSettings 
         moduleId="cross-level" 
         title="고저" 
@@ -329,21 +520,6 @@ function CrossLevelSidebar() {
 function LongitudinalLevelIrregularitySidebar() {
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold">평탄성 분석</h3>
-      </div>
-      <p className="text-sm text-muted-foreground">
-        종방향 레벨 불규칙성을 분석합니다.
-      </p>
-      <div className="space-y-2">
-        <div className="text-sm font-medium">분석 항목</div>
-        <ul className="text-sm text-muted-foreground space-y-1">
-          <li>• 종방향 레벨 분석</li>
-          <li>• 불규칙성 탐지</li>
-          <li>• 표준 편차 계산</li>
-        </ul>
-      </div>
-      
       <AnalysisSettings 
         moduleId="longitudinal-level-irregularity" 
         title="평탄성" 
@@ -356,21 +532,6 @@ function LongitudinalLevelIrregularitySidebar() {
 function GuideRailClearanceSidebar() {
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold">안내레일 내측거리</h3>
-      </div>
-      <p className="text-sm text-muted-foreground">
-        안내레일과의 내측거리를 분석합니다.
-      </p>
-      <div className="space-y-2">
-        <div className="text-sm font-medium">분석 항목</div>
-        <ul className="text-sm text-muted-foreground space-y-1">
-          <li>• 내측거리 측정</li>
-          <li>• 허용 오차 분석</li>
-          <li>• 안전성 평가</li>
-        </ul>
-      </div>
-      
       <AnalysisSettings 
         moduleId="guiderail-clearance" 
         title="안내레일 내측거리" 
@@ -380,51 +541,11 @@ function GuideRailClearanceSidebar() {
   );
 }
 
-function AlignmentSidebar() {
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold">정렬 분석</h3>
-      </div>
-      <p className="text-sm text-muted-foreground">
-        레일의 정렬 상태를 분석합니다.
-      </p>
-      <div className="space-y-2">
-        <div className="text-sm font-medium">분석 항목</div>
-        <ul className="text-sm text-muted-foreground space-y-1">
-          <li>• 정렬 편차 측정</li>
-          <li>• 기준선 대비 분석</li>
-          <li>• 보정 필요 구간 식별</li>
-        </ul>
-      </div>
-      
-      <AnalysisSettings 
-        moduleId="alignment" 
-        title="정렬" 
-        hasLeftRight={true}
-      />
-    </div>
-  );
-}
+
 
 function StraightnessSidebar() {
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold">직진도 분석</h3>
-      </div>
-      <p className="text-sm text-muted-foreground">
-        레일의 직진도를 분석합니다.
-      </p>
-      <div className="space-y-2">
-        <div className="text-sm font-medium">분석 항목</div>
-        <ul className="text-sm text-muted-foreground space-y-1">
-          <li>• 직진도 편차 측정</li>
-          <li>• 곡률 분석</li>
-          <li>• 품질 기준 대비 평가</li>
-        </ul>
-      </div>
-      
       <AnalysisSettings 
         moduleId="straightness" 
         title="직진도" 
@@ -437,21 +558,6 @@ function StraightnessSidebar() {
 function StepSidebar() {
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold">연결부 단차</h3>
-      </div>
-      <p className="text-sm text-muted-foreground">
-        레일 연결부의 단차를 분석합니다.
-      </p>
-      <div className="space-y-2">
-        <div className="text-sm font-medium">분석 항목</div>
-        <ul className="text-sm text-muted-foreground space-y-1">
-          <li>• 연결부 단차 측정</li>
-          <li>• 허용 오차 분석</li>
-          <li>• 안전성 평가</li>
-        </ul>
-      </div>
-      
       <AnalysisSettings 
         moduleId="step" 
         title="연결부 단차" 

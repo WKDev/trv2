@@ -80,8 +80,15 @@ export function formatEncoder(encoder: number): string {
  * @param index Index 값
  * @returns 정수 문자열
  */
-export function formatIndex(index: number): string {
-  return Math.floor(index).toString()
+export function formatIndex(index: number | string | undefined | null): string {
+  if (index === undefined || index === null) {
+    return '0'
+  }
+  const numValue = typeof index === 'string' ? parseInt(index) : index
+  if (isNaN(numValue)) {
+    return '0'
+  }
+  return Math.floor(numValue).toString()
 }
 
 /**
@@ -108,7 +115,16 @@ export function formatAngle(angle: number): string {
  * @param value 값
  * @returns 포맷팅된 문자열
  */
-export function formatValueByColumn(columnName: string, value: number | string): string {
+export function formatValueByColumn(columnName: string, value: number | string | undefined | null): string {
+  // undefined나 null인 경우 기본값 반환
+  if (value === undefined || value === null) {
+    const lowerColumnName = columnName.toLowerCase()
+    if (lowerColumnName === 'index') {
+      return '0'
+    }
+    return '0.00'
+  }
+  
   // 숫자가 아닌 경우 그대로 반환
   if (typeof value !== 'number' || isNaN(value)) {
     return String(value)
@@ -118,6 +134,11 @@ export function formatValueByColumn(columnName: string, value: number | string):
   
   // Index 컬럼 처리
   if (lowerColumnName === 'index') {
+    return formatIndex(value)
+  }
+  
+  // No. 컬럼 처리 (연결부 단차 테이블용)
+  if (lowerColumnName === 'no.' || lowerColumnName === 'no') {
     return formatIndex(value)
   }
   
@@ -133,6 +154,11 @@ export function formatValueByColumn(columnName: string, value: number | string):
   
   // Travelled 컬럼 처리
   if (lowerColumnName.includes('travelled') || lowerColumnName === 'travelled') {
+    return formatTravelled(value)
+  }
+  
+  // Position 컬럼 처리 (연결부 단차 테이블용)
+  if (lowerColumnName === 'position') {
     return formatTravelled(value)
   }
   

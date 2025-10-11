@@ -6,15 +6,34 @@ import { Label } from "@/components/ui/label"
 import { Download, FileText, BarChart3, FolderOpen } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useLocalStorage } from "@/hooks/use-local-storage"
+import { useData } from "@/contexts/data-context"
+import { useEffect } from "react"
 
 const reportTypes = ["수준이상", "평면성이상", "고저", "평탄성", "안내레일 내측거리", "직진도", "연결부 단차"]
 
 export function OutputPage() {
   const { toast } = useToast()
+  const { sendAnalysisDataToMain } = useData()
   const [savePath, setSavePath] = useLocalStorage({
     key: "output-savePath",
     defaultValue: "바탕화면",
   })
+
+  // 출력 탭 진입 시 분석 데이터를 메인 프로세스로 전송
+  useEffect(() => {
+    console.log('🔄 OutputPage 마운트 - 출력 탭 진입 감지');
+    
+    // 출력 탭에 진입할 때 데이터를 메인 프로세스로 전송
+    sendAnalysisDataToMain().then((result) => {
+      if (result.success) {
+        console.log('✅ 출력 탭 진입 시 데이터 전송 완료');
+      } else {
+        console.error('❌ 출력 탭 진입 시 데이터 전송 실패:', result.message);
+      }
+    }).catch((error) => {
+      console.error('❌ 출력 탭 진입 시 데이터 전송 중 오류:', error);
+    });
+  }, [sendAnalysisDataToMain]);
 
   const handleBrowse = () => {
     // In a real application, this would open a file dialog

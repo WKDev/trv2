@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
+import { RotateCcw } from 'lucide-react';
 import { useLocalStorage } from '@/hooks/use-local-storage';
 import { useElectronStorage } from '@/hooks/use-electron-storage';
 import { useData } from '@/contexts/data-context';
@@ -24,6 +26,13 @@ const measurementConfig = {
     defaultRefLevel: 4,
     defaultYMin: -10,
     defaultYMax: 10,
+  },
+  'planarity': {
+    prefix: '<',
+    suffix: 'mm/3m',
+    defaultRefLevel: 3,
+    defaultYMin: -8,
+    defaultYMax: 8,
   },
   'cross-level': {
     prefix: '±',
@@ -46,13 +55,7 @@ const measurementConfig = {
     defaultYMin: 0,
     defaultYMax: 20,
   },
-  'alignment': {
-    prefix: '<',
-    suffix: 'mm/3m',
-    defaultRefLevel: 3,
-    defaultYMin: -8,
-    defaultYMax: 8,
-  },
+
   'straightness': {
     prefix: '<',
     suffix: 'mm/3m',
@@ -109,22 +112,39 @@ export function AnalysisSettings({ moduleId, title, hasLeftRight = false }: Anal
   // Y축 범위 설정 변경 시 즉시 반영
   const handleYAxisEnabledChange = (enabled: boolean) => {
     setYAxisEnabled(enabled);
-    window.dispatchEvent(new Event('storage'));
+    // localStorage 업데이트 후 커스텀 이벤트 발생
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('yAxisSettingsChanged', { 
+        detail: { moduleId, enabled, min: yAxisMin, max: yAxisMax, tickStep: yAxisTickStep }
+      }));
+    }, 0);
   };
 
   const handleYAxisMinChange = (value: number) => {
     setYAxisMin(value);
-    window.dispatchEvent(new Event('storage'));
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('yAxisSettingsChanged', { 
+        detail: { moduleId, enabled: yAxisEnabled, min: value, max: yAxisMax, tickStep: yAxisTickStep }
+      }));
+    }, 0);
   };
 
   const handleYAxisMaxChange = (value: number) => {
     setYAxisMax(value);
-    window.dispatchEvent(new Event('storage'));
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('yAxisSettingsChanged', { 
+        detail: { moduleId, enabled: yAxisEnabled, min: yAxisMin, max: value, tickStep: yAxisTickStep }
+      }));
+    }, 0);
   };
 
   const handleYAxisTickStepChange = (value: number) => {
     setYAxisTickStep(value);
-    window.dispatchEvent(new Event('storage'));
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('yAxisSettingsChanged', { 
+        detail: { moduleId, enabled: yAxisEnabled, min: yAxisMin, max: yAxisMax, tickStep: value }
+      }));
+    }, 0);
   };
 
   // Scale & Offset 설정
@@ -148,7 +168,7 @@ export function AnalysisSettings({ moduleId, title, hasLeftRight = false }: Anal
     defaultValue: 0.0,
   });
 
-  const { correctionData, updateCorrectionData } = useData();
+  const { correctionData, updateCorrectionData, longitudinalLevelIrregularitySettings, updateLongitudinalLevelIrregularitySettings, straightnessSettings, updateStraightnessSettings } = useData();
 
   // correction data가 변경될 때 scale과 offset 값 업데이트
   useEffect(() => {
@@ -198,6 +218,10 @@ export function AnalysisSettings({ moduleId, title, hasLeftRight = false }: Anal
     }
   };
 
+  const handleResetAggregationInterval = () => {
+    updateLongitudinalLevelIrregularitySettings({ interval: 1.0 });
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -207,7 +231,12 @@ export function AnalysisSettings({ moduleId, title, hasLeftRight = false }: Anal
       {/* Reference Level */}
       <Card className="bg-card border-border shadow-sm">
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-medium">Reference Level</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm font-medium">Reference Level</CardTitle>
+            <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={handleResetRefLevel}>
+              <RotateCcw className="h-4 w-4" />
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex items-center gap-2">
@@ -220,9 +249,6 @@ export function AnalysisSettings({ moduleId, title, hasLeftRight = false }: Anal
               className="bg-background flex-1"
             />
             <span className="text-sm font-medium text-foreground">{config.suffix}</span>
-            <Button size="sm" variant="outline" onClick={handleResetRefLevel}>
-              기본값
-            </Button>
           </div>
         </CardContent>
       </Card>
@@ -232,22 +258,18 @@ export function AnalysisSettings({ moduleId, title, hasLeftRight = false }: Anal
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm font-medium">Y축 범위 설정</CardTitle>
-            <Button size="sm" variant="outline" onClick={handleResetYAxis}>
-              기본값
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={handleResetYAxis}>
+                <RotateCcw className="h-4 w-4" />
+              </Button>
+              <Switch
+                checked={yAxisEnabled}
+                onCheckedChange={handleYAxisEnabledChange}
+              />
+            </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="flex items-center space-x-2">
-            <Checkbox
-              id="yAxisEnabled"
-              checked={yAxisEnabled}
-              onCheckedChange={(checked) => handleYAxisEnabledChange(checked as boolean)}
-            />
-            <Label htmlFor="yAxisEnabled" className="text-sm">
-              Y축 범위 수동 설정
-            </Label>
-          </div>
           
           {yAxisEnabled && (
             <div className="space-y-3">
@@ -298,13 +320,79 @@ export function AnalysisSettings({ moduleId, title, hasLeftRight = false }: Anal
         </CardContent>
       </Card>
 
+      {/* 평탄성 집계구간 설정 (평탄성만) */}
+      {moduleId === 'longitudinal-level-irregularity' && (
+        <Card className="bg-card border-border shadow-sm">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-medium">집계구간 설정</CardTitle>
+              <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={handleResetAggregationInterval}>
+                <RotateCcw className="h-4 w-4" />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="space-y-2">
+              <Label htmlFor="aggregationInterval" className="text-xs text-muted-foreground">
+                집계구간 (m)
+              </Label>
+              <Input
+                id="aggregationInterval"
+                type="number"
+                step="1"
+                min="1"
+                value={longitudinalLevelIrregularitySettings.interval}
+                onChange={(e) => {
+                  const value = Number.parseFloat(e.target.value) || 1.0;
+                  updateLongitudinalLevelIrregularitySettings({ interval: value });
+                }}
+                className="bg-background"
+              />
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 직진도 집계구간 설정 (직진도만) */}
+      {moduleId === 'straightness' && (
+        <Card className="bg-card border-border shadow-sm">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-medium">집계구간 설정</CardTitle>
+              <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => updateStraightnessSettings({ interval: 1.0 })}>
+                <RotateCcw className="h-4 w-4" />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="space-y-2">
+              <Label htmlFor="aggregationInterval" className="text-xs text-muted-foreground">
+                집계구간 (m)
+              </Label>
+              <Input
+                id="aggregationInterval"
+                type="number"
+                step="1"
+                min="1"
+                value={straightnessSettings.interval}
+                onChange={(e) => {
+                  const value = Number.parseFloat(e.target.value) || 1.0;
+                  updateStraightnessSettings({ interval: value });
+                }}
+                className="bg-background"
+              />
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Scale & Offset */}
       <Card className="bg-card border-border shadow-sm">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm font-medium">Scale & Offset</CardTitle>
-            <Button size="sm" variant="outline" onClick={handleResetScaleOffset}>
-              기본값
+            <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={handleResetScaleOffset}>
+              <RotateCcw className="h-4 w-4" />
             </Button>
           </div>
         </CardHeader>

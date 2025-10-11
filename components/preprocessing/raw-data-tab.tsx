@@ -33,7 +33,11 @@ const RawDataTab = memo(() => {
     undoLastModification,
     transferSelectedDataToCorrection,
     hasModifications,
-    hasData
+    hasData,
+    useStaOffset,
+    staOffset,
+    removeStaOffsetFromData,
+    applyStaOffsetToData
   } = useData()
 
   const [restoreMenuOpen, setRestoreMenuOpen] = useState(false)
@@ -92,8 +96,11 @@ const RawDataTab = memo(() => {
       }
 
       // 수정된 데이터를 CSV 형식으로 변환하여 저장
+      // RAW 데이터 저장 시에는 STA offset을 제거한 원본 Travelled 값 저장
+      const dataToSave = useStaOffset ? removeStaOffsetFromData(rawData) : rawData
+      
       const csvData = {
-        data: rawData,
+        data: dataToSave,
         // meta와 step 데이터는 기존 것 유지
         meta: processedData.data?.raw?.meta || [],
         step: processedData.data?.raw?.step || []
@@ -246,7 +253,7 @@ const RawDataTab = memo(() => {
             </CardHeader>
             <CardContent>
               <DataTable
-                data={rawData.map((row: any, index: number) => ({
+                data={(useStaOffset ? applyStaOffsetToData(rawData) : rawData).map((row: any, index: number) => ({
                   id: index + 1,
                   selected: selectedRows.has(index),
                   index: index + 1,

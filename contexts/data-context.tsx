@@ -1,6 +1,8 @@
 "use client"
 
 import React, { createContext, useContext, useState, useEffect, useRef, useMemo, useCallback, ReactNode } from 'react'
+import { useAggregationWorker } from '@/hooks/use-aggregation-worker'
+import { useAnalysisWorker } from '@/hooks/use-analysis-worker'
   // 모든 컬럼에 대해 한 번에 이상치 감지 및 대체하는 함수
   const detectAndReplaceOutliersForAllColumns = (data: any[], columns: string[], columnSettings: Record<string, {useIQR: boolean, iqrMultiplier: number, useZScore: boolean, zScoreThreshold: number}>, applyMode: 'individual' | 'bulk', bulkSettings?: {useIQR: boolean, iqrMultiplier: number, useZScore: boolean, zScoreThreshold: number}) => {
     if (data.length === 0) return data
@@ -266,12 +268,22 @@ interface DataContextType {
   correctionData: CorrectionData | null
   isProcessing: boolean
   
+  // STA offset 관련
+  staOffset: number // meta.csv의 STA 값을 float으로 변환한 값
+  useStaOffset: boolean // STA offset 사용 여부
+  
   // 단계별 데이터 상태
   rawData: any[]
   originalRawData: any[] // 원본 데이터 백업
   correctedData: any[]
   outlierRemovedData: any[] // 이상치 제거된 데이터
   aggregatedData: any[]
+  levelDeviationData: any[] // 수준 이상 계산 결과 데이터
+  crossLevelData: any[] // 고저차 계산 결과 데이터
+  stepData: any[] // 이음새 단차 계산 결과 데이터
+  longitudinalLevelIrregularityData: any[] // 평탄성 계산 결과 데이터
+  straightnessData: any[] // 직진도 계산 결과 데이터
+  guideRailClearanceData: any[] // 안내레일 내측거리 계산 결과 데이터
   selectedRows: Set<number>
   correctedSelectedRows: Set<number>
   outlierRemovedSelectedRows: Set<number>
@@ -292,6 +304,9 @@ interface DataContextType {
   // 집계 탭 진입/이탈 감지를 위한 상태
   aggregationTabEntered: boolean
   
+  // 분석 탭 진입/이탈 감지를 위한 상태
+  analysisTabEntered: boolean
+  
   // 현재 적용 모드와 일괄 설정
   currentApplyMode: 'individual' | 'bulk'
   bulkSettings: {
@@ -308,6 +323,45 @@ interface DataContextType {
     emaSpan: number
   }
   
+  // Web Worker 집계 상태
+  isAggregating: boolean
+  aggregationProgress: any
+  aggregationError: string | null
+  
+  // Web Worker 분석 상태
+  isAnalysisProcessing: boolean
+  analysisProgress: any
+  analysisError: string | null
+  
+  // 평탄성 집계 설정
+  longitudinalLevelIrregularitySettings: {
+    interval: number
+  }
+  
+  // 직진도 집계 설정
+  straightnessSettings: {
+    interval: number
+  }
+  
+  // 평면성 집계 설정
+  planaritySettings: {
+    interval: number
+    aggregationMethod: 'median' | 'mean' | 'ema'
+    emaSpan: number
+  }
+  
+  // 평면성 계산 결과 데이터
+  planarityData: any[]
+  
+  // 직진도 집계 설정 업데이트 함수
+  updateStraightnessSettings: (settings: Partial<{ interval: number }>) => void
+  
+  // 평면성 집계 설정 업데이트 함수
+  updatePlanaritySettings: (settings: Partial<{ interval: number; aggregationMethod: 'median' | 'mean' | 'ema'; emaSpan: number }>) => void
+  
+  // 평면성 데이터 설정 함수
+  setPlanarityData: (data: any[]) => void
+  
   // 데이터 액션
   setProcessedData: (data: ProcessedData | null) => void
   setMetadata: (metadata: Metadata) => void
@@ -316,11 +370,22 @@ interface DataContextType {
   updateCorrectionData: (section: 'preprocessing' | 'analysis', key: string, field: 'Scaler' | 'offset', value: number) => void
   setIsProcessing: (processing: boolean) => void
   
+  // STA offset 액션
+  setStaOffset: (offset: number) => void
+  setUseStaOffset: (use: boolean) => void
+  applyStaOffsetToData: (data: any[]) => any[]
+  removeStaOffsetFromData: (data: any[]) => any[]
+  
   // 단계별 데이터 액션
   setRawData: React.Dispatch<React.SetStateAction<any[]>>
   setCorrectedData: React.Dispatch<React.SetStateAction<any[]>>
   setOutlierRemovedData: React.Dispatch<React.SetStateAction<any[]>>
   setAggregatedData: React.Dispatch<React.SetStateAction<any[]>>
+  setLevelDeviationData: React.Dispatch<React.SetStateAction<any[]>>
+  setCrossLevelData: React.Dispatch<React.SetStateAction<any[]>>
+  setStepData: React.Dispatch<React.SetStateAction<any[]>>
+  setLongitudinalLevelIrregularityData: React.Dispatch<React.SetStateAction<any[]>>
+  setGuideRailClearanceData: React.Dispatch<React.SetStateAction<any[]>>
   setSelectedRows: (rows: Set<number>) => void
   setCorrectedSelectedRows: (rows: Set<number>) => void
   setOutlierRemovedSelectedRows: (rows: Set<number>) => void
@@ -342,6 +407,7 @@ interface DataContextType {
   setCurrentApplyMode: (mode: 'individual' | 'bulk') => void
   setBulkSettings: (settings: {useIQR: boolean, iqrMultiplier: number, useZScore: boolean, zScoreThreshold: number}) => void
   setAggregationTabEntered: (entered: boolean) => void
+  setAnalysisTabEntered: (entered: boolean) => void
   
   // 데이터 접근 헬퍼
   getDataCsv: () => any[]
@@ -353,6 +419,9 @@ interface DataContextType {
   // 집계 설정 업데이트
   updateAggregationSettings: (settings: Partial<{interval: number, method: 'median' | 'mean' | 'ema', emaSpan: number}>) => void
   
+  // 평탄성 집계 설정 업데이트
+  updateLongitudinalLevelIrregularitySettings: (settings: Partial<{interval: number}>) => void
+  
   // 기본값 복원 함수들
   resetOutlierSettingsToDefault: () => Promise<void>
   resetScaleOffsetSettingsToDefault: () => Promise<void>
@@ -360,6 +429,9 @@ interface DataContextType {
   
   // 수동 저장 함수
   saveAllSettingsToFile: () => Promise<{success: boolean, message: string}>
+  
+  // 분석 데이터 전송 함수
+  sendAnalysisDataToMain: () => Promise<{success: boolean, message: string}>
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined)
@@ -383,12 +455,26 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [correctionData, setCorrectionData] = useState<CorrectionData | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
   
+  // Web Worker 훅 사용
+  const { aggregateData, validateSettings, isProcessing: isAggregating, progress, error } = useAggregationWorker()
+  const { calculateStraightness: workerCalculateStraightness, calculatePlanarity: workerCalculatePlanarity, isProcessing: isAnalysisProcessing, progress: analysisProgress, error: analysisError } = useAnalysisWorker()
+  
+  // STA offset 관련 상태
+  const [staOffset, setStaOffset] = useState<number>(0)
+  const [useStaOffset, setUseStaOffset] = useState<boolean>(false)
+  
   // 단계별 데이터 상태
   const [rawData, setRawData] = useState<any[]>([])
   const [originalRawData, setOriginalRawData] = useState<any[]>([])
   const [correctedData, setCorrectedData] = useState<any[]>([])
   const [outlierRemovedData, setOutlierRemovedData] = useState<any[]>([])
   const [aggregatedData, setAggregatedData] = useState<any[]>([])
+  const [levelDeviationData, setLevelDeviationData] = useState<any[]>([])
+  const [crossLevelData, setCrossLevelData] = useState<any[]>([])
+  const [stepData, setStepData] = useState<any[]>([])
+  const [longitudinalLevelIrregularityData, setLongitudinalLevelIrregularityData] = useState<any[]>([])
+  const [straightnessData, setStraightnessData] = useState<any[]>([])
+  const [guideRailClearanceData, setGuideRailClearanceData] = useState<any[]>([])
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set())
   const [correctedSelectedRows, setCorrectedSelectedRows] = useState<Set<number>>(new Set())
   const [outlierRemovedSelectedRows, setOutlierRemovedSelectedRows] = useState<Set<number>>(new Set())
@@ -397,6 +483,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [modificationHistory, setModificationHistory] = useState<any[]>([]) // 수정 히스토리
   const [applyModeChanged, setApplyModeChanged] = useState(false) // 탭 변경 감지
   const [aggregationTabEntered, setAggregationTabEntered] = useState(false) // 집계 탭 진입 감지
+  const [analysisTabEntered, setAnalysisTabEntered] = useState(false) // 분석 탭 진입 감지
   const [currentApplyMode, setCurrentApplyMode] = useState<'individual' | 'bulk'>('individual')
   const [bulkSettings, setBulkSettings] = useState({
     useIQR: true,
@@ -411,6 +498,26 @@ export function DataProvider({ children }: { children: ReactNode }) {
     method: 'mean' as 'median' | 'mean' | 'ema',
     emaSpan: 5
   })
+  
+  // 평탄성 집계 설정 상태
+  const [longitudinalLevelIrregularitySettings, setLongitudinalLevelIrregularitySettings] = useState({
+    interval: 1.0
+  })
+  
+  // 직진도 집계 설정 상태
+  const [straightnessSettings, setStraightnessSettings] = useState({
+    interval: 1.0
+  })
+  
+  // 평면성 집계 설정 상태
+  const [planaritySettings, setPlanaritySettings] = useState({
+    interval: 3.0,
+    aggregationMethod: 'median' as 'median' | 'mean' | 'ema',
+    emaSpan: 5
+  })
+  
+  // 평면성 계산 결과 데이터 상태
+  const [planarityData, setPlanarityData] = useState<any[]>([])
   
   // 이상치 제거 설정 - 컬럼별 설정
   const [outlierRemovalSettings, setOutlierRemovalSettings] = useState<Record<string, {
@@ -677,6 +784,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setHasModifications(false)
       setModificationHistory([])
       
+      // stepData 초기화
+      const stepCsvData = getStepCsv()
+      console.log('🔍 DataContext stepData 초기화:', {
+        stepCsvDataLength: stepCsvData?.length || 0,
+        stepCsvDataSample: stepCsvData?.slice(0, 2)
+      })
+      if (stepCsvData && stepCsvData.length > 0) {
+        setStepData(stepCsvData)
+      } else {
+        setStepData([])
+      }
+      
       // options.json에서 설정값 로딩
       loadOptionsFromFile()
       
@@ -690,6 +809,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const allIndices = new Set<number>(sortedData.map((_: any, index: number) => index))
       setSelectedRows(allIndices)
       // 선택된 행이 설정되면 handleSetSelectedRows에서 자동으로 보정 탭으로 전달됨
+      
+      console.log('🚀 파일 로드 완료 - 자동 전처리 시작 예정')
     }
   }, [processedData?.fileName, processedData?.filePath]) // processedData의 고유 식별자로 변경
 
@@ -922,6 +1043,61 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  // 분석 데이터를 electron 메인 프로세스로 전송하는 함수
+  const sendAnalysisDataToMain = async () => {
+    try {
+      if (typeof window !== 'undefined' && window.electronAPI) {
+        console.log('📤 분석 데이터를 메인 프로세스로 전송 중...')
+        
+        // 모든 분석 데이터를 수집
+        const analysisData = {
+          timestamp: new Date().toISOString(),
+          metadata: metadata,
+          correctionData: correctionData,
+          // 전처리 데이터
+          rawData: rawData,
+          outlierRemovedData: outlierRemovedData,
+          aggregatedData: aggregatedData,
+          correctedData: correctedData,
+          // 분석 결과 데이터
+          levelDeviationData: levelDeviationData,
+          crossLevelData: crossLevelData,
+          stepData: stepData,
+          longitudinalLevelIrregularityData: longitudinalLevelIrregularityData,
+          straightnessData: straightnessData,
+          guideRailClearanceData: guideRailClearanceData,
+          // 설정 데이터
+          outlierRemovalSettings: outlierRemovalSettings,
+          aggregationSettings: aggregationSettings,
+          longitudinalLevelIrregularitySettings: longitudinalLevelIrregularitySettings,
+          straightnessSettings: straightnessSettings,
+          // STA offset 정보
+          staOffset: staOffset,
+          useStaOffset: useStaOffset,
+          // 선택된 행 정보
+          selectedRows: Array.from(selectedRows),
+          correctedSelectedRows: Array.from(correctedSelectedRows),
+          outlierRemovedSelectedRows: Array.from(outlierRemovedSelectedRows),
+          aggregatedSelectedRows: Array.from(aggregatedSelectedRows)
+        }
+        
+        const result = await window.electronAPI.sendAnalysisData(analysisData)
+        
+        if (result.success) {
+          console.log('✅ 분석 데이터가 성공적으로 메인 프로세스로 전송되었습니다.')
+          return { success: true, message: '분석 데이터가 성공적으로 전송되었습니다.' }
+        } else {
+          console.error('❌ 분석 데이터 전송 실패:', result.message)
+          return { success: false, message: result.message }
+        }
+      }
+      return { success: false, message: '전송할 수 없습니다.' }
+    } catch (error) {
+      console.error('❌ 분석 데이터 전송 중 오류:', error)
+      return { success: false, message: '전송 중 오류가 발생했습니다.' }
+    }
+  }
+
   // 기본값으로 복원하는 함수들
   const resetOutlierSettingsToDefault = async () => {
     try {
@@ -971,6 +1147,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
     })
   }
 
+  const updateLongitudinalLevelIrregularitySettings = (settings: Partial<{interval: number}>) => {
+    setLongitudinalLevelIrregularitySettings(prev => {
+      const newSettings = {
+        ...prev,
+        ...settings
+      }
+      
+      console.log('평탄성 집계 설정 업데이트:', newSettings)
+      return newSettings
+    })
+  }
+
   const resetAggregationSettingsToDefault = async () => {
     try {
       if (typeof window !== 'undefined' && window.electronAPI) {
@@ -987,6 +1175,41 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  // STA offset 관련 함수들
+  const applyStaOffsetToData = (data: any[]): any[] => {
+    if (!useStaOffset || staOffset === 0) {
+      return data
+    }
+    
+    return data.map(row => ({
+      ...row,
+      Travelled: parseFloat(row.Travelled) + staOffset
+    }))
+  }
+
+  const removeStaOffsetFromData = (data: any[]): any[] => {
+    if (!useStaOffset || staOffset === 0) {
+      return data
+    }
+    
+    return data.map(row => ({
+      ...row,
+      Travelled: parseFloat(row.Travelled) - staOffset
+    }))
+  }
+
+  // 메타데이터의 STA 값이 변경될 때 STA offset 자동 업데이트
+  useEffect(() => {
+    if (metadata.line && metadata.line.trim() !== '') {
+      const staValue = parseFloat(metadata.line)
+      if (!isNaN(staValue)) {
+        setStaOffset(staValue)
+        setUseStaOffset(true)
+        console.log('STA offset 자동 설정:', staValue)
+      }
+    }
+  }, [metadata.line])
+
   // 증분 계산을 위한 이전 보정 데이터 추적
   const prevCorrectionDataRef = useRef<CorrectionData | null>(null)
   const prevOutlierRemovedDataRef = useRef<any[]>([])
@@ -1001,11 +1224,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
     // 이전 보정 데이터가 없으면 전체 계산
     if (!prevCorrectionData?.preprocessing) {
       console.log('🔄 전체 보정 데이터 계산 (초기 로드)')
-      return data.map(row => {
+      return data.map((row, index) => {
         const newRow = { ...row } // 모든 원본 데이터를 복사 (Index, Travelled 등 포함)
+        // Index와 Travelled는 보정하지 않고 원본 값 유지
+        newRow.Index = parseInt(row.Index) || index + 1
+        newRow.Travelled = parseFloat(row.Travelled) || 0
+        
         Object.keys(correctionData.preprocessing).forEach(key => {
           const correction = correctionData.preprocessing[key]
-          if (newRow[key] !== undefined) {
+          if (newRow[key] !== undefined && key !== 'Index' && key !== 'Travelled') {
             newRow[key] = (newRow[key] * correction.Scaler) + correction.offset
           }
         })
@@ -1224,7 +1451,49 @@ export function DataProvider({ children }: { children: ReactNode }) {
   // 일괄 설정과 개별 설정은 독립적으로 관리됨
   // 동기화 로직 제거 - 각각의 UI 폼 요소 상태에 따라 처리
 
-  // outlierRemovedData가 변경될 때 자동으로 집계 탭으로 전달
+  // Web Worker를 사용한 집계 수행 함수
+  const performWebWorkerAggregation = useCallback(async (data: any[], settings: {interval: number, method: 'median' | 'mean' | 'ema', emaSpan: number}) => {
+    try {
+      console.log('🔄 Web Worker 집계 작업 시작:', {
+        inputDataLength: data.length,
+        settings: settings,
+        inputDataSample: data.slice(0, 2)
+      })
+      
+      if (data.length === 0) {
+        console.log('❌ 집계할 데이터가 없음')
+        return
+      }
+      
+      // 설정 검증
+      const validation = await validateSettings(settings)
+      if (!validation.isValid) {
+        console.error('집계 설정 오류:', validation.errors)
+        return
+      }
+
+      // Web Worker를 사용한 집계 수행
+      const result = await aggregateData(data, settings)
+      if (result.success) {
+        console.log('✅ Web Worker 집계 완료 - aggregatedData 설정:', {
+          resultDataLength: result.data.length,
+          sample: result.data.slice(0, 3)
+        })
+        setAggregatedData(result.data)
+        
+        // 집계된 데이터가 변경되면 모든 행을 선택하도록 설정
+        const allAggregatedIndices = new Set<number>(result.data.map((_, index) => index))
+        setAggregatedSelectedRows(allAggregatedIndices)
+        console.log('✅ 집계된 데이터 선택 행 설정 완료:', allAggregatedIndices.size)
+      } else {
+        console.error('❌ Web Worker 집계 실패:', result.error)
+      }
+    } catch (error) {
+      console.error('❌ Web Worker 집계 중 오류 발생:', error)
+    }
+  }, [aggregateData, validateSettings, setAggregatedData, setAggregatedSelectedRows])
+
+  // outlierRemovedData가 변경될 때 자동으로 집계 수행
   useEffect(() => {
     console.log('🔄 outlierRemovedData useEffect 실행:', {
       outlierRemovedDataLength: outlierRemovedData.length,
@@ -1233,35 +1502,29 @@ export function DataProvider({ children }: { children: ReactNode }) {
     })
     
     if (outlierRemovedData.length > 0) {
-      // 선택된 행이 있으면 해당 행만, 없으면 모든 데이터를 집계 탭으로 전달
-      const dataToTransfer = outlierRemovedSelectedRows.size > 0 
+      // 선택된 행이 있으면 해당 행만, 없으면 모든 데이터를 사용
+      const dataToProcess = outlierRemovedSelectedRows.size > 0 
         ? outlierRemovedData.filter((_, index) => outlierRemovedSelectedRows.has(index))
         : outlierRemovedData
       
-      console.log('📊 outlierRemovedData 변경 - 데이터 전달:', {
-        dataToTransferLength: dataToTransfer.length,
+      console.log('📊 outlierRemovedData 변경 - 자동 집계 수행:', {
+        dataToProcessLength: dataToProcess.length,
         aggregationTabEntered,
-        willClearAggregatedData: true
+        currentAggregatedDataLength: aggregatedData.length
       })
       
-      // 집계 탭에 진입했을 때만 집계 작업 수행
-      if (aggregationTabEntered) {
-        // Web Worker를 사용한 집계는 aggregation-tab에서 처리
-        // 여기서는 데이터만 전달하고 집계는 탭에서 수행
-        console.log('⚠️ 집계 탭 진입 - aggregatedData 초기화 (집계 작업 예정)')
-        setAggregatedData([]) // 초기화
-        // 집계 탭에서도 모든 데이터가 선택되도록 설정
-        const allIndices = new Set<number>(dataToTransfer.map((_, index) => index))
-        setAggregatedSelectedRows(allIndices)
+      // 집계 탭에 진입했을 때 또는 분석 탭에 진입했을 때 집계 작업 수행
+      if (aggregationTabEntered || analysisTabEntered) {
+        console.log('✅ 집계/분석 탭 진입 - Web Worker 자동 집계 수행')
+        performWebWorkerAggregation(dataToProcess, aggregationSettings)
       } else {
-        // 집계 탭에 진입하지 않았으면 기존 aggregatedData 유지
-        console.log('✅ 집계 탭 미진입 - aggregatedData 유지 (기존 데이터 보존)')
-        // setAggregatedData([]) 제거 - 기존 데이터 보존
-        const allIndices = new Set<number>(dataToTransfer.map((_, index) => index))
+        // 탭에 진입하지 않았으면 기존 aggregatedData 유지
+        console.log('✅ 탭 미진입 - aggregatedData 유지 (기존 데이터 보존)')
+        const allIndices = new Set<number>(dataToProcess.map((_, index) => index))
         setAggregatedSelectedRows(allIndices)
       }
     }
-  }, [outlierRemovedData, outlierRemovedSelectedRows, aggregationTabEntered])
+  }, [outlierRemovedData, outlierRemovedSelectedRows, aggregationTabEntered, analysisTabEntered, performWebWorkerAggregation, aggregationSettings])
 
   // aggregatedData가 변경될 때 자동으로 Scale & Offset 탭으로 전달
   useEffect(() => {
@@ -1296,6 +1559,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setCorrectedSelectedRows(new Set())
     }
   }, [aggregatedData, correctionData])
+
 
   // 자동 저장 제거 - 수동 저장 버튼 사용
 
@@ -1372,6 +1636,207 @@ export function DataProvider({ children }: { children: ReactNode }) {
     })
   }
 
+  // 수준 이상 계산 함수
+  const calculateLevelDeviation = useCallback((data: any[], analysisCorrection?: { Scaler: number, offset: number }) => {
+    if (!data || data.length === 0) {
+      return []
+    }
+
+    return data.map((row: any, index: number) => {
+      const level2 = parseFloat(row.Level2) || 0;
+      const level5 = parseFloat(row.Level5) || 0;
+      const level6 = parseFloat(row.Level6) || 0;
+      const level1 = parseFloat(row.Level1) || 0;
+
+      // 기본 수준 이상 계산
+      let leftValue = level6 - level2;  // Level6 - Level2
+      let rightValue = level5 - level1; // Level5 - Level1
+
+      // 분석용 Scale & Offset 적용
+      if (analysisCorrection) {
+        const scale = analysisCorrection.Scaler || 1.0;
+        const offset = analysisCorrection.offset || 0.0;
+        
+        leftValue = leftValue * scale + offset;
+        rightValue = rightValue * scale + offset;
+      }
+
+      return {
+        id: index + 1,
+        selected: true,
+        Index: row.Index !== undefined && row.Index !== null ? parseInt(row.Index) : index + 1,
+        Travelled: parseFloat(row.Travelled) || 0,
+        Left: leftValue,
+        Right: rightValue,
+      };
+    });
+  }, []);
+
+  // 고저차 계산 함수
+  const calculateCrossLevel = useCallback((data: any[], analysisCorrection?: { Scaler: number, offset: number }) => {
+    if (!data || data.length === 0) {
+      return []
+    }
+
+    return data.map((row: any, index: number) => {
+      const level2 = parseFloat(row.Level2) || 0;
+      const level1 = parseFloat(row.Level1) || 0;
+
+      // 고저차 계산: Left는 Level2, Right는 Level1
+      let leftValue = level2;
+      let rightValue = level1;
+
+      // 분석용 Scale & Offset 적용
+      if (analysisCorrection) {
+        const scale = analysisCorrection.Scaler || 1.0;
+        const offset = analysisCorrection.offset || 0.0;
+        
+        leftValue = leftValue * scale + offset;
+        rightValue = rightValue * scale + offset;
+      }
+
+      return {
+        id: index + 1,
+        selected: true,
+        Index: row.Index !== undefined && row.Index !== null ? parseInt(row.Index) : index + 1,
+        Travelled: parseFloat(row.Travelled) || 0,
+        Left: leftValue,
+        Right: rightValue,
+      };
+    });
+  }, []);
+
+  // 안내레일 내측거리 계산 함수
+  const calculateGuideRailClearance = useCallback((data: any[], analysisCorrection?: { Scaler: number, offset: number }) => {
+    if (!data || data.length === 0) {
+      return []
+    }
+
+    return data.map((row: any, index: number) => {
+      const level3 = parseFloat(row.Level3) || 0;
+      const level4 = parseFloat(row.Level4) || 0;
+      const encoder3 = parseFloat(row.Encoder3) || 0;
+
+      // 안내레일 내측거리 계산: GC = Level3 + Level4 + Encoder3
+      let gidValue = level3 + level4 + encoder3;
+
+      // 분석용 Scale & Offset 적용
+      if (analysisCorrection) {
+        const scale = analysisCorrection.Scaler || 1.0;
+        const offset = analysisCorrection.offset || 0.0;
+        
+        gidValue = gidValue * scale + offset;
+      }
+
+      return {
+        id: index + 1,
+        selected: true,
+        Index: row.Index !== undefined && row.Index !== null ? parseInt(row.Index) : index + 1,
+        Travelled: parseFloat(row.Travelled) || 0,
+        Level3: level3,
+        Level4: level4,
+        Encoder3: encoder3,
+        GC: gidValue,
+      };
+    });
+  }, []);
+
+  // 이음새 단차 계산 함수
+  const calculateStep = useCallback((data: any[], analysisCorrection?: { Scaler: number, offset: number }) => {
+    if (!data || data.length === 0) {
+      return []
+    }
+
+    return data.map((row: any, index: number) => {
+      const level2 = parseFloat(row.Level2) || 0;
+      const level1 = parseFloat(row.Level1) || 0;
+
+      // 이음새 단차 계산: Left는 Level2, Right는 Level1
+      let leftValue = level2;
+      let rightValue = level1;
+
+      // 분석용 Scale & Offset 적용
+      if (analysisCorrection) {
+        const scale = analysisCorrection.Scaler || 1.0;
+        const offset = analysisCorrection.offset || 0.0;
+        
+        leftValue = leftValue * scale + offset;
+        rightValue = rightValue * scale + offset;
+      }
+
+      return {
+        id: index + 1,
+        selected: true,
+        Index: row.Index !== undefined && row.Index !== null ? parseInt(row.Index) : index + 1,
+        Travelled: parseFloat(row.Travelled) || 0,
+        Left: leftValue,
+        Right: rightValue,
+      };
+    });
+  }, []);
+
+  // 평탄성 계산 함수 (Web Worker 사용)
+  const calculateLongitudinalLevelIrregularity = useCallback(async (data: any[], interval: number = 1.0, analysisCorrection?: { Scaler: number, offset: number }) => {
+    if (!data || data.length === 0) {
+      return []
+    }
+
+    console.log('📊 평탄성 계산 시작 (Web Worker):', {
+      dataLength: data.length,
+      interval,
+      hasAnalysisCorrection: !!analysisCorrection
+    })
+
+    try {
+      const result = await workerCalculatePlanarity(data, { interval }, analysisCorrection)
+      
+      if (result.success) {
+        console.log('📊 평탄성 계산 완료 (Web Worker):', {
+          totalIntervals: result.data.length,
+          result: result.data.slice(0, 3)
+        })
+        return result.data
+      } else {
+        console.error('❌ 평탄성 계산 실패:', result.error)
+        return []
+      }
+    } catch (error) {
+      console.error('❌ 평탄성 계산 중 오류:', error)
+      return []
+    }
+  }, [workerCalculatePlanarity]);
+
+  // 직진도 계산 함수 (Web Worker 사용)
+  const calculateStraightness = useCallback(async (data: any[], interval: number = 1.0, analysisCorrection?: { Scaler: number, offset: number }) => {
+    if (!data || data.length === 0) {
+      return []
+    }
+
+    console.log('📊 직진도 계산 시작 (Web Worker):', {
+      dataLength: data.length,
+      interval,
+      hasAnalysisCorrection: !!analysisCorrection
+    })
+
+    try {
+      const result = await workerCalculateStraightness(data, { interval }, analysisCorrection)
+      
+      if (result.success) {
+        console.log('📊 직진도 계산 완료 (Web Worker):', {
+          totalIntervals: result.data.length,
+          result: result.data.slice(0, 3)
+        })
+        return result.data
+      } else {
+        console.error('❌ 직진도 계산 실패:', result.error)
+        return []
+      }
+    } catch (error) {
+      console.error('❌ 직진도 계산 중 오류:', error)
+      return []
+    }
+  }, [workerCalculateStraightness]);
+
   const applyAggregation = (aggregationType: string, outlierRemoval: boolean) => {
     let dataToProcess = correctedData.length > 0 ? correctedData : rawData
     
@@ -1393,6 +1858,275 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  // correctedData가 변경될 때 수준 이상 데이터 자동 계산
+  useEffect(() => {
+    console.log('🔄 수준 이상 데이터 계산 useEffect 실행:', {
+      correctedDataLength: correctedData.length,
+      hasAnalysisCorrection: !!correctionData?.analysis?.['level-deviation']
+    })
+    
+    if (correctedData.length > 0) {
+      const analysisCorrection = correctionData?.analysis?.['level-deviation'] as any;
+      const calculatedData = calculateLevelDeviation(correctedData, analysisCorrection);
+      
+      console.log('📊 수준 이상 데이터 계산 완료:', {
+        inputLength: correctedData.length,
+        outputLength: calculatedData.length,
+        hasAnalysisCorrection: !!analysisCorrection,
+        sample: calculatedData.slice(0, 2)
+      });
+      
+      setLevelDeviationData(calculatedData);
+    } else {
+      console.log('📊 correctedData가 비어있음 - 수준 이상 데이터 초기화');
+      setLevelDeviationData([]);
+    }
+  }, [correctedData, correctionData, calculateLevelDeviation])
+
+  // correctedData가 변경될 때 고저차 데이터 자동 계산
+  useEffect(() => {
+    console.log('🔄 고저차 데이터 계산 useEffect 실행:', {
+      correctedDataLength: correctedData.length,
+      hasAnalysisCorrection: !!correctionData?.analysis?.['cross-level']
+    })
+    
+    if (correctedData.length > 0) {
+      const analysisCorrection = correctionData?.analysis?.['cross-level'] as any;
+      const calculatedData = calculateCrossLevel(correctedData, analysisCorrection);
+      
+      console.log('📊 고저차 데이터 계산 완료:', {
+        inputLength: correctedData.length,
+        outputLength: calculatedData.length,
+        hasAnalysisCorrection: !!analysisCorrection,
+        sample: calculatedData.slice(0, 2)
+      });
+      
+      setCrossLevelData(calculatedData);
+    } else {
+      console.log('📊 correctedData가 비어있음 - 고저차 데이터 초기화');
+      setCrossLevelData([]);
+    }
+  }, [correctedData, correctionData, calculateCrossLevel])
+
+  // correctedData가 변경될 때 안내레일 내측거리 데이터 자동 계산
+  useEffect(() => {
+    console.log('🔄 안내레일 내측거리 데이터 계산 useEffect 실행:', {
+      correctedDataLength: correctedData.length,
+      hasAnalysisCorrection: !!correctionData?.analysis?.['guiderail-clearance']
+    })
+    
+    if (correctedData.length > 0) {
+      const analysisCorrection = correctionData?.analysis?.['guiderail-clearance'] as any;
+      const calculatedData = calculateGuideRailClearance(correctedData, analysisCorrection);
+      
+      console.log('📊 안내레일 내측거리 데이터 계산 완료:', {
+        inputLength: correctedData.length,
+        outputLength: calculatedData.length,
+        hasAnalysisCorrection: !!analysisCorrection,
+        sample: calculatedData.slice(0, 2)
+      });
+      
+      setGuideRailClearanceData(calculatedData);
+    } else {
+      console.log('📊 correctedData가 비어있음 - 안내레일 내측거리 데이터 초기화');
+      setGuideRailClearanceData([]);
+    }
+  }, [correctedData, correctionData, calculateGuideRailClearance])
+
+  // correctedData가 변경될 때 이음새 단차 데이터 자동 계산
+  useEffect(() => {
+    console.log('🔄 이음새 단차 데이터 계산 useEffect 실행:', {
+      correctedDataLength: correctedData.length,
+      hasAnalysisCorrection: !!correctionData?.analysis?.['step']
+    })
+    
+    if (correctedData.length > 0) {
+      const analysisCorrection = correctionData?.analysis?.['step'] as any;
+      const calculatedData = calculateStep(correctedData, analysisCorrection);
+      
+      console.log('📊 이음새 단차 데이터 계산 완료:', {
+        inputLength: correctedData.length,
+        outputLength: calculatedData.length,
+        hasAnalysisCorrection: !!analysisCorrection,
+        sample: calculatedData.slice(0, 2)
+      });
+      
+      setStepData(calculatedData);
+    } else {
+      console.log('📊 correctedData가 비어있음 - 이음새 단차 데이터 초기화');
+      setStepData([]);
+    }
+  }, [correctedData, correctionData, calculateStep])
+
+  // 분석 탭 진입 시 자동 전처리 수행
+  useEffect(() => {
+    console.log('🔄 분석 탭 자동 전처리 useEffect 실행:', {
+      analysisTabEntered,
+      hasRawData: rawData.length > 0,
+      hasOutlierRemovedData: outlierRemovedData.length > 0,
+      hasAggregatedData: aggregatedData.length > 0,
+      hasCorrectedData: correctedData.length > 0
+    })
+    
+    if (analysisTabEntered && rawData.length > 0) {
+      // 전처리 상태 확인
+      const needsOutlierProcessing = outlierRemovedData.length === 0
+      const needsAggregation = aggregatedData.length === 0
+      const needsCorrection = correctedData.length === 0
+      
+      console.log('📊 전처리 상태 확인:', {
+        needsOutlierProcessing,
+        needsAggregation,
+        needsCorrection
+      })
+      
+      // 필요한 전처리 단계가 있으면 자동으로 수행
+      if (needsOutlierProcessing || needsAggregation || needsCorrection) {
+        console.log('🚀 자동 전처리 시작')
+        
+        // 1. 이상치 처리 (이미 useEffect에서 자동으로 수행됨)
+        if (needsOutlierProcessing) {
+          console.log('✅ 이상치 처리 자동 수행 (이미 진행 중)')
+        }
+        
+        // 2. 집계 처리 - Web Worker 집계 함수 호출
+        if (needsAggregation && outlierRemovedData.length > 0) {
+          console.log('✅ 집계 처리 자동 수행 - Web Worker 집계 함수 호출')
+          performWebWorkerAggregation(outlierRemovedData, aggregationSettings)
+        }
+        
+        // 3. Scale & Offset 처리 (aggregatedData가 있으면 자동으로 보정 수행)
+        if (needsCorrection && aggregatedData.length > 0) {
+          console.log('✅ Scale & Offset 처리 자동 수행 (memoizedCorrectedData에서 처리)')
+        }
+      } else {
+        console.log('✅ 모든 전처리 단계 완료됨')
+      }
+    }
+  }, [analysisTabEntered, rawData, outlierRemovedData, aggregatedData, correctedData, performWebWorkerAggregation, aggregationSettings])
+
+  // 분석 탭에서 전처리 데이터 변경 모니터링 및 자동 재계산
+  useEffect(() => {
+    if (analysisTabEntered) {
+      console.log('🔄 분석 탭 전처리 데이터 모니터링:', {
+        outlierRemovedDataLength: outlierRemovedData.length,
+        aggregatedDataLength: aggregatedData.length,
+        correctedDataLength: correctedData.length,
+        timestamp: new Date().toISOString()
+      })
+      
+      // 전처리 데이터가 업데이트되면 자동으로 분석 결과 재계산
+      // (각 분석 함수의 useEffect에서 이미 자동으로 처리됨)
+      console.log('✅ 분석 탭에서 전처리 데이터 변경 감지 - 자동 재계산 진행 중')
+    }
+  }, [analysisTabEntered, outlierRemovedData, aggregatedData, correctedData])
+
+  // outlierRemovedData가 변경될 때 평탄성 데이터 자동 계산
+  // 평탄성은 전처리 단계의 outlierRemovedData를 사용 (집계하지 않음)
+  useEffect(() => {
+    console.log('🔄 평탄성 데이터 계산 useEffect 실행:', {
+      outlierRemovedDataLength: outlierRemovedData.length,
+      hasAnalysisCorrection: !!correctionData?.analysis?.['longitudinal-level-irregularity'],
+      interval: longitudinalLevelIrregularitySettings.interval
+    })
+    
+    if (outlierRemovedData.length > 0) {
+      // outlierRemovedData에 전처리용 Scale & Offset 적용
+      let dataWithPreprocessingCorrection = outlierRemovedData;
+      if (correctionData?.preprocessing) {
+        dataWithPreprocessingCorrection = outlierRemovedData.map(row => {
+          const newRow = { ...row };
+          Object.keys(correctionData.preprocessing).forEach(key => {
+            const correction = correctionData.preprocessing[key];
+            if (newRow[key] !== undefined && key !== 'Index' && key !== 'Travelled') {
+              newRow[key] = (newRow[key] * correction.Scaler) + correction.offset;
+            }
+          });
+          return newRow;
+        });
+      }
+      
+      const analysisCorrection = correctionData?.analysis?.['longitudinal-level-irregularity'] as any;
+      
+      // Web Worker를 사용한 비동기 계산
+      calculateLongitudinalLevelIrregularity(
+        dataWithPreprocessingCorrection, 
+        longitudinalLevelIrregularitySettings.interval, 
+        analysisCorrection
+      ).then((calculatedData) => {
+        console.log('📊 평탄성 데이터 계산 완료:', {
+          inputLength: outlierRemovedData.length,
+          outputLength: calculatedData.length,
+          interval: longitudinalLevelIrregularitySettings.interval,
+          hasAnalysisCorrection: !!analysisCorrection,
+          hasPreprocessingCorrection: !!correctionData?.preprocessing,
+          sample: calculatedData.slice(0, 2)
+        });
+        
+        setLongitudinalLevelIrregularityData(calculatedData);
+      }).catch((error) => {
+        console.error('❌ 평탄성 데이터 계산 실패:', error);
+        setLongitudinalLevelIrregularityData([]);
+      });
+    } else {
+      console.log('📊 outlierRemovedData가 비어있음 - 평탄성 데이터 초기화');
+      setLongitudinalLevelIrregularityData([]);
+    }
+  }, [outlierRemovedData, correctionData, longitudinalLevelIrregularitySettings, calculateLongitudinalLevelIrregularity])
+
+  // outlierRemovedData가 변경될 때 직진도 데이터 자동 계산
+  // 직진도는 전처리 단계의 outlierRemovedData를 사용 (집계하지 않음)
+  useEffect(() => {
+    console.log('🔄 직진도 데이터 계산 useEffect 실행:', {
+      outlierRemovedDataLength: outlierRemovedData.length,
+      hasAnalysisCorrection: !!correctionData?.analysis?.straightness,
+      interval: straightnessSettings.interval
+    })
+    
+    if (outlierRemovedData.length > 0) {
+      // outlierRemovedData에 전처리용 Scale & Offset 적용
+      let dataWithPreprocessingCorrection = outlierRemovedData;
+      if (correctionData?.preprocessing) {
+        dataWithPreprocessingCorrection = outlierRemovedData.map(row => {
+          const newRow = { ...row };
+          Object.keys(correctionData.preprocessing).forEach(key => {
+            const correction = correctionData.preprocessing[key];
+            if (newRow[key] !== undefined && key !== 'Index' && key !== 'Travelled') {
+              newRow[key] = (newRow[key] * correction.Scaler) + correction.offset;
+            }
+          });
+          return newRow;
+        });
+      }
+      
+      const analysisCorrection = correctionData?.analysis?.straightness as any;
+      
+      // Web Worker를 사용한 비동기 계산
+      calculateStraightness(
+        dataWithPreprocessingCorrection, 
+        straightnessSettings.interval, 
+        analysisCorrection
+      ).then((calculatedData) => {
+        console.log('📊 직진도 데이터 계산 완료:', {
+          inputLength: outlierRemovedData.length,
+          outputLength: calculatedData.length,
+          interval: straightnessSettings.interval,
+          hasAnalysisCorrection: !!analysisCorrection,
+          hasPreprocessingCorrection: !!correctionData?.preprocessing,
+          sample: calculatedData.slice(0, 2)
+        });
+        
+        setStraightnessData(calculatedData);
+      }).catch((error) => {
+        console.error('❌ 직진도 데이터 계산 실패:', error);
+        setStraightnessData([]);
+      });
+    } else {
+      console.log('📊 outlierRemovedData가 비어있음 - 직진도 데이터 초기화');
+      setStraightnessData([]);
+    }
+  }, [outlierRemovedData, correctionData, straightnessSettings, calculateStraightness])
+
   // 탭 변경 시 이상치 재처리 트리거
   const triggerOutlierReprocessing = () => {
     console.log('🚀 이상치 재처리 트리거 실행')
@@ -1404,11 +2138,21 @@ export function DataProvider({ children }: { children: ReactNode }) {
     metadata,
     correctionData,
     isProcessing,
+    
+    // STA offset 관련
+    staOffset,
+    useStaOffset,
     rawData,
     originalRawData,
     correctedData,
     outlierRemovedData,
     aggregatedData,
+    levelDeviationData,
+    crossLevelData,
+    stepData,
+    longitudinalLevelIrregularityData,
+    straightnessData,
+    guideRailClearanceData,
     selectedRows,
     correctedSelectedRows,
     outlierRemovedSelectedRows,
@@ -1417,19 +2161,48 @@ export function DataProvider({ children }: { children: ReactNode }) {
     outlierRemovalSettings,
     applyModeChanged,
     aggregationTabEntered,
+    analysisTabEntered,
     currentApplyMode,
     bulkSettings,
     aggregationSettings,
+    isAggregating,
+    aggregationProgress: progress,
+    aggregationError: error,
+    isAnalysisProcessing,
+    analysisProgress,
+    analysisError,
+    longitudinalLevelIrregularitySettings,
+    straightnessSettings,
+    planaritySettings,
+    planarityData,
+    updateStraightnessSettings: (settings: Partial<{ interval: number }>) => {
+      setStraightnessSettings(prev => ({ ...prev, ...settings }));
+    },
+    updatePlanaritySettings: (settings: Partial<{ interval: number; aggregationMethod: 'median' | 'mean' | 'ema'; emaSpan: number }>) => {
+      setPlanaritySettings(prev => ({ ...prev, ...settings }));
+    },
+    setPlanarityData,
     setProcessedData,
     setMetadata,
     setCorrectionData,
     updateMetadata,
     updateCorrectionData,
     setIsProcessing,
+    
+    // STA offset 액션
+    setStaOffset,
+    setUseStaOffset,
+    applyStaOffsetToData,
+    removeStaOffsetFromData,
     setRawData: handleSetRawData,
     setCorrectedData,
     setOutlierRemovedData,
     setAggregatedData,
+    setLevelDeviationData,
+    setCrossLevelData,
+    setStepData,
+    setLongitudinalLevelIrregularityData,
+    setGuideRailClearanceData,
     setSelectedRows: handleSetSelectedRows,
     setCorrectedSelectedRows,
     setOutlierRemovedSelectedRows,
@@ -1449,16 +2222,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setCurrentApplyMode,
     setBulkSettings,
     setAggregationTabEntered,
+    setAnalysisTabEntered,
     getDataCsv,
     getStepCsv,
     getMetaCsv,
     hasData,
     getCorrectionValue,
     updateAggregationSettings,
+    updateLongitudinalLevelIrregularitySettings,
     resetOutlierSettingsToDefault,
     resetScaleOffsetSettingsToDefault,
     resetAggregationSettingsToDefault,
     saveAllSettingsToFile,
+    sendAnalysisDataToMain,
   }
 
   return (

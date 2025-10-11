@@ -25,7 +25,9 @@ const OutlierProcessingTab = memo(() => {
     hasData,
     triggerOutlierReprocessing,
     setCurrentApplyMode,
-    setBulkSettings: setContextBulkSettings
+    setBulkSettings: setContextBulkSettings,
+    useStaOffset,
+    applyStaOffsetToData
   } = useData()
 
   
@@ -149,7 +151,7 @@ const OutlierProcessingTab = memo(() => {
             </CardHeader>
             <CardContent>
               <DataTable
-                data={outlierRemovedData.map((row: any, index: number) => ({
+                data={(useStaOffset ? applyStaOffsetToData(outlierRemovedData) : outlierRemovedData).map((row: any, index: number) => ({
                   id: index + 1,
                   selected: outlierRemovedSelectedRows.has(index),
                   index: index + 1,

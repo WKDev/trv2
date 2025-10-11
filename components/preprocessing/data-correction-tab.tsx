@@ -26,7 +26,9 @@ const DataCorrectionTab = memo(() => {
     hasData, 
     correctionData,
     updateCorrectionData,
-    getCorrectionValue
+    getCorrectionValue,
+    useStaOffset,
+    applyStaOffsetToData
   } = useData()
 
   // 디버깅을 위한 로그
@@ -118,7 +120,7 @@ const DataCorrectionTab = memo(() => {
             </CardHeader>
             <CardContent>
               <ReadonlyDataTable
-                data={correctedData.map((row: any, index: number) => ({
+                data={(useStaOffset ? applyStaOffsetToData(correctedData) : correctedData).map((row: any, index: number) => ({
                   id: index + 1,
                   selected: correctedSelectedRows.has(index),
                   index: index + 1,

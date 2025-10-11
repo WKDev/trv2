@@ -28,7 +28,9 @@ export const SharedChartSection = memo(({
     rawData,
     outlierRemovedData,
     correctedData,
-    aggregatedData
+    aggregatedData,
+    useStaOffset,
+    applyStaOffsetToData
   } = useData()
 
   // ChartDataSelector의 선택 변경 핸들러
@@ -82,8 +84,11 @@ export const SharedChartSection = memo(({
       hasData: selectedData.length > 0
     })
     
-    return selectedData
-  }, [currentTab, rawData, outlierRemovedData, correctedData, aggregatedData])
+    // STA offset 적용 (전처리 메뉴에서는 표시용으로만 적용)
+    const dataWithStaOffset = useStaOffset ? applyStaOffsetToData(selectedData) : selectedData
+    
+    return dataWithStaOffset
+  }, [currentTab, rawData, outlierRemovedData, correctedData, aggregatedData, useStaOffset])
 
   // 차트 제목 설정
   const chartTitle = useMemo(() => {
